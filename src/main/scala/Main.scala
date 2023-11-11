@@ -1,4 +1,4 @@
-import frontend.checks.TopDefCollector
+import frontend.checks.{FrontendError, TopDefCollector}
 import frontend.SymTable
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
@@ -21,5 +21,7 @@ def main(inputFileString: String): Unit = {
 	} catch {
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
 			exitWithError(s"${ptg.getMessage}\nCause:\n${ptg.cause}")
+		case f: FrontendError =>
+			exitWithError(f.frontendErrorToString)
 	}
 }

@@ -20,16 +20,16 @@ lazy val root = (project in file("."))
 
 	  // Generates the lexer and parser.
 	  Compile / sourceGenerators += Def.task {
-		  val extraClasspath = (Compile / dependencyClasspath).value.map(_.data).mkString(".:", ":", "")
+		  val depsClasspath = (Compile / dependencyClasspath).value.map(_.data).mkString(".:", ":", "")
 
 		  val cachedFunction = FileFunction.cached(
 			  streams.value.cacheDirectory / "grammar"
 		  ) { (in: Set[File]) =>
 			  val grammarPath = in.head.toPath
 			  print("Generating grammar files... ")
-			  val res = Process(Seq("java", "-cp", extraClasspath, "org.antlr.v4.Tool", grammarPath.toString, "-no-listener", "-visitor", "-package", "grammar", "-o", s"${grammarPath.getParent.getParent}/java/grammar")).!
+			  val res = Process(Seq("java", "-cp", depsClasspath, "org.antlr.v4.Tool", grammarPath.toString, "-no-listener", "-visitor", "-package", "grammar", "-o", s"${grammarPath.getParent.getParent}/java/grammar")).!
 			  println("Done.")
-			  IO.write(Path("dependencies-classpath.cp").asFile, extraClasspath)
+			  IO.write(Path("dependencies-classpath.cp").asFile, depsClasspath)
 
 			  generatedGrammarFiles(baseDirectory.value).filter(_.toString.endsWith(".java")).toSet
 		  }

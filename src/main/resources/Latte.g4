@@ -5,11 +5,34 @@ program
     ;
 
 topDef
-    : type_ ID '(' arg? ')' block
+    : functionDef # DFun
+    | classDef    # DClass
     ;
 
-arg
-    : type_ ID ( ',' type_ ID )*
+classDef
+    : 'class' ID ('extends' ID)? '{' memberDef* '}'
+    ;
+
+memberDef
+    : ';'             # MEmpty
+    | memberVariable  # MVar
+    | memberFunction  # MFun
+    ;
+
+memberVariable
+    : anyType item ( ',' item )* ';'
+    ;
+
+memberFunction
+    : functionDef
+    ;
+
+functionDef
+    : anyType ID '(' args? ')' block
+    ;
+
+args
+    : anyType ID ( ',' anyType ID )*
     ;
 
 block
@@ -17,25 +40,38 @@ block
     ;
 
 stmt
-    : ';'                                # Empty
-    | block                              # BlockStmt
-    | type_ item ( ',' item )* ';'       # Decl
-    | ID '=' expr ';'                    # Ass
-    | ID '++' ';'                        # Incr
-    | ID '--' ';'                        # Decr
-    | 'return' expr ';'                  # Ret
-    | 'return' ';'                       # VRet
-    | 'if' '(' expr ')' stmt             # Cond
-    | 'if' '(' expr ')' stmt 'else' stmt # CondElse
-    | 'while' '(' expr ')' stmt          # While
-    | expr ';'                           # SExp
+    : ';'                                       # SEmpty
+    | block                                     # BlockStmt
+    | anyType item ( ',' item )* ';'            # Decl
+    | value '=' expr ';'                        # Ass
+    | value '++' ';'                            # Incr
+    | value '--' ';'                            # Decr
+    | 'return' expr ';'                         # Ret
+    | 'return' ';'                              # VRet
+    | 'if' '(' expr ')' stmt                    # Cond
+    | 'if' '(' expr ')' stmt 'else' stmt        # CondElse
+    | 'while' '(' expr ')' stmt                 # While
+    | 'for' '(' basicType ID ':' expr ')' stmt  # For
+    | expr ';'                                  # SExp
     ;
 
-type_
+value
+    : ID                  # VID
+    | value '.' ID        # VMem
+    | value '[' expr ']'  # VArr
+    ;
+
+anyType
+    : basicType         # TBase
+    | basicType '[' ']' # TArr
+    ;
+
+basicType
     : 'int'     # Int
     | 'string'  # Str
     | 'boolean' # Bool
     | 'void'    # Void
+    | ID        # Class
     ;
 
 item
@@ -44,19 +80,22 @@ item
     ;
 
 expr
-    : ('-'|'!') expr                      # EUnOp
-    | expr mulOp expr                     # EMulOp
-    | expr addOp expr                     # EAddOp
-    | expr relOp expr                     # ERelOp
-    | <assoc=right> expr '&&' expr        # EAnd
-    | <assoc=right> expr '||' expr        # EOr
-    | ID                                  # EId
-    | INT                                 # EInt
-    | 'true'                              # ETrue
-    | 'false'                             # EFalse
-    | ID '(' ( expr ( ',' expr )* )? ')'  # EFunCall
-    | STR                           # EStr
-    | '(' expr ')'                  # EParen
+    : ('-'|'!') expr                         # EUnOp
+    | expr mulOp expr                        # EMulOp
+    | expr addOp expr                        # EAddOp
+    | expr relOp expr                        # ERelOp
+    | <assoc=right> expr '&&' expr           # EAnd
+    | <assoc=right> expr '||' expr           # EOr
+    | value                                  # EId
+    | INT                                    # EInt
+    | 'true'                                 # ETrue
+    | 'false'                                # EFalse
+    | 'new' basicType                        # ENew
+    | 'new' basicType '[' expr ']'           # ENewArr
+    | '(' ID ')' 'null'                      # ENull
+    | value '(' ( expr ( ',' expr )* )? ')'  # EFunCall
+    | STR                                    # EStr
+    | '(' expr ')'                           # EParen
     ;
 
 addOp
