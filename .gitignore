@@ -1,0 +1,6 @@
+/.idea/
+/.bsp/
+target/
+
+/dependencies-classpath.cp
+/src/main/java/grammar/*
