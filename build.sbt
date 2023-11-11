@@ -27,9 +27,9 @@ lazy val root = (project in file("."))
 		  ) { (in: Set[File]) =>
 			  val grammarPath = in.head.toPath
 			  print("Generating grammar files... ")
-			  val res = Process(Seq("java", "-cp", depsClasspath, "org.antlr.v4.Tool", grammarPath.toString, "-no-listener", "-visitor", "-package", "grammar", "-o", s"${grammarPath.getParent.getParent}/java/grammar")).!
+			  Process(Seq("java", "-cp", depsClasspath, "org.antlr.v4.Tool", grammarPath.toString, "-no-listener", "-visitor", "-package", "grammar", "-o", s"${baseDirectory.value}/src/main/java/grammar")).!
 			  println("Done.")
-			  IO.write(Path("dependencies-classpath.cp").asFile, depsClasspath)
+			  IO.write(Path("dependencies.cp").asFile, depsClasspath)
 
 			  generatedGrammarFiles(baseDirectory.value).filter(_.toString.endsWith(".java")).toSet
 		  }
