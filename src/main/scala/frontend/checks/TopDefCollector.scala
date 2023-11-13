@@ -1,27 +1,31 @@
 package frontend.checks
 
-import frontend.{Position, SymbolInfo, SymTable}
-import grammar.{LatteBaseVisitor, LatteParser}
+import frontend.*
+import grammar.LatteParser
 
-object TopDefCollector extends LatteBaseVisitor[SymTable] {
-	override def defaultResult(): SymTable = SymTable.withLattePredefined
-	override def aggregateResult(aggregate: SymTable, nextResult: SymTable): SymTable = {
-		aggregate.addAll(nextResult.collect {
-			case sym @ (name, SymbolInfo(pos, _)) if pos != Position.predefined => if aggregate.contains(name) then throw RedeclarationError(pos, name) else sym
-		})
-	}
+/**
+ * Collects the top-level definitions, which are meant to be available everywhere in the program.
+ * Checks for duplicates and includes predefined functions.
+ */
+object TopDefCollector extends SymTableCollector {
+	override def defaultResult: SymTable = SymTable.withLattePredefined
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): SymTable = {
 		val name = ctx.ID(0).getText
 		val classDefType = TypeCollector.visitClassDef(ctx)
-		val declarationPosition = Position(ctx.ID(0).getSymbol.getLine, ctx.ID(0).getSymbol.getCharPositionInLine)
-		SymTable(name -> SymbolInfo(declarationPosition, classDefType))
+		val declarationPosition = Position(ctx.ID(0).getSymbol.getLine, ctx.ID(0).getSymbol.getCharPositionInLine + 1)
+		SymTable(name -> UnambiguousSymbolInfo(declarationPosition, classDefType))
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): SymTable = {
 		val name = ctx.ID.getText
 		val funDefType = TypeCollector.visitFunctionDef(ctx)
-		val declarationPosition = Position(ctx.ID.getSymbol.getLine, ctx.ID.getSymbol.getCharPositionInLine)
-		SymTable(name -> SymbolInfo(declarationPosition, funDefType))
+		val declarationPosition = Position(ctx.ID.getSymbol.getLine, ctx.ID.getSymbol.getCharPositionInLine + 1)
+		SymTable(name -> UnambiguousSymbolInfo(declarationPosition, funDefType))
+	}
+
+	def collectUnambiguous(ctx: LatteParser.ProgramContext): UnambiguousSymTable = {
+		import SymTable.unambiguous
+		super.visitProgram(ctx).unambiguous
 	}
 }

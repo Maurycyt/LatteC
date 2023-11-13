@@ -4,11 +4,16 @@ import frontend.LatteType
 import frontend.LatteType._
 import grammar.{LatteBaseVisitor, LatteParser}
 
+/**
+ * Gets the type of a parsing context.
+ */
 object TypeCollector extends LatteBaseVisitor[LatteType] {
 	override def visitInt(ctx: LatteParser.IntContext): LatteType = TInt
 	override def visitStr(ctx: LatteParser.StrContext): LatteType = TStr
 	override def visitBool(ctx: LatteParser.BoolContext): LatteType = TBool
 	override def visitVoid(ctx: LatteParser.VoidContext): LatteType = TVoid
+
+	override def visitClass(ctx: LatteParser.ClassContext): LatteType = TClass(ctx.ID.getText)
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteType = {
 		TClass(ctx.ID(0).getText)

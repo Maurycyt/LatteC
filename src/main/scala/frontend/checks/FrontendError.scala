@@ -8,6 +8,6 @@ trait FrontendError extends Error {
 	def frontendErrorToString: String = s"At $position  :  $message"
 }
 
-case class RedeclarationError(position: Position, name: String) extends FrontendError {
-	override def message: String = s"Redeclaration of symbol $name."
+case class RedeclarationError(position: Position, name: String, previousPosition: Position) extends FrontendError {
+	override def message: String = s"Redeclaration of symbol $name.\n\tNote: previous declaration at $previousPosition"
 }

@@ -2,5 +2,5 @@
 /.bsp/
 target/
 
-/dependencies-classpath.cp
+/dependencies.cp
 /src/main/java/grammar/*
