@@ -55,7 +55,7 @@ For input
 1
 ```
 
-Its output should be:
+The output should be:
 ```
 A
 B(1)
