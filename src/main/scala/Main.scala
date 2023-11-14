@@ -1,5 +1,6 @@
-import frontend.checks.{ClassMemberCollector, FrontendError, MemberDefCollector, TopDefCollector}
-import frontend.{UnambiguousClassTable, UnambiguousSymTable}
+import frontend.checks.symbols.{UnambiguousClassTable, UnambiguousSymTable}
+import frontend.checks.symbols.{ClassMemberCollector, TopDefCollector}
+import frontend.checks.FrontendError
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
 import parsing.ParseTreeGenerator

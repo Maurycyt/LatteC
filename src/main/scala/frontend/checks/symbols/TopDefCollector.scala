@@ -1,6 +1,7 @@
-package frontend.checks
+package frontend.checks.symbols
 
-import frontend.*
+import frontend.checks.symbols
+import frontend.checks.types.TypeCollector
 import grammar.LatteParser
 
 /**
@@ -14,14 +15,14 @@ object TopDefCollector extends SymTableCollector {
 		val name = ctx.ID(0).getText
 		val classDefType = TypeCollector.visitClassDef(ctx)
 		val declarationPosition = Position(ctx.ID(0).getSymbol.getLine, ctx.ID(0).getSymbol.getCharPositionInLine + 1)
-		SymTable(name -> UnambiguousSymbolInfo(declarationPosition, classDefType))
+		SymTable(name -> symbols.UnambiguousSymbolInfo(declarationPosition, classDefType))
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): SymTable = {
 		val name = ctx.ID.getText
 		val funDefType = TypeCollector.visitFunctionDef(ctx)
 		val declarationPosition = Position(ctx.ID.getSymbol.getLine, ctx.ID.getSymbol.getCharPositionInLine + 1)
-		SymTable(name -> UnambiguousSymbolInfo(declarationPosition, funDefType))
+		SymTable(name -> symbols.UnambiguousSymbolInfo(declarationPosition, funDefType))
 	}
 
 	def collectUnambiguous(ctx: LatteParser.ProgramContext): UnambiguousSymTable = {

@@ -1,6 +1,5 @@
-package frontend.checks
+package frontend.checks.symbols
 
-import frontend.SymTable
 import grammar.LatteBaseVisitor
 
 /**

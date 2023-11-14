@@ -1,6 +1,5 @@
-package frontend.checks
+package frontend.checks.symbols
 
-import frontend.{ClassTable, SymTable, UnambiguousClassTable}
 import grammar.{LatteBaseVisitor, LatteParser}
 
 import scala.collection.mutable

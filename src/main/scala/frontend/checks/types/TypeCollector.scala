@@ -1,19 +1,19 @@
-package frontend.checks
+package frontend.checks.types
 
-import frontend.LatteType
-import frontend.LatteType._
+import frontend.checks.symbols.LatteType
+import frontend.checks.symbols.LatteType.*
 import grammar.{LatteBaseVisitor, LatteParser}
 
 /**
- * Gets the type of a parsing context.
+ * Gets the type of a type specifier.
  */
 object TypeCollector extends LatteBaseVisitor[LatteType] {
-	override def visitInt(ctx: LatteParser.IntContext): LatteType = TInt
-	override def visitStr(ctx: LatteParser.StrContext): LatteType = TStr
-	override def visitBool(ctx: LatteParser.BoolContext): LatteType = TBool
-	override def visitVoid(ctx: LatteParser.VoidContext): LatteType = TVoid
+	override def visitTInt(ctx: LatteParser.TIntContext): LatteType = TInt
+	override def visitTStr(ctx: LatteParser.TStrContext): LatteType = TStr
+	override def visitTBool(ctx: LatteParser.TBoolContext): LatteType = TBool
+	override def visitTVoid(ctx: LatteParser.TVoidContext): LatteType = TVoid
 
-	override def visitClass(ctx: LatteParser.ClassContext): LatteType = TClass(ctx.ID.getText)
+	override def visitTClass(ctx: LatteParser.TClassContext): LatteType = TClass(ctx.ID.getText)
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteType = {
 		TClass(ctx.ID(0).getText)

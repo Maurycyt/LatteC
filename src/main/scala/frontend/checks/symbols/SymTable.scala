@@ -1,7 +1,7 @@
-package frontend
+package frontend.checks.symbols
 
-import frontend.LatteType._
-import frontend.checks.RedeclarationError
+import LatteType.*
+import frontend.checks.{symbols, RedeclarationError}
 
 import scala.collection.mutable
 
@@ -33,7 +33,7 @@ object SymTable {
 		"error" -> TFunction(Seq.empty, TVoid),
 		"readInt" -> TFunction(Seq.empty, TInt),
 		"readString" -> TFunction(Seq.empty, TStr)
-	).map { (name, symbolType) => (name, UnambiguousSymbolInfo(Position.predefined, symbolType)) }
+	).map { (name, symbolType) => (name, symbols.UnambiguousSymbolInfo(Position.predefined, symbolType)) }
 
 	val withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
 

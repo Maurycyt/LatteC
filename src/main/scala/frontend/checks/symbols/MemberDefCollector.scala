@@ -1,6 +1,7 @@
-package frontend.checks
+package frontend.checks.symbols
 
-import frontend.*
+import frontend.checks.symbols
+import frontend.checks.types.TypeCollector
 import grammar.LatteParser
 import org.antlr.v4.runtime.tree.TerminalNode
 
@@ -17,7 +18,7 @@ object MemberDefCollector extends SymTableCollector {
 		val memberType: LatteType = TypeCollector.visit(ctx.anyType)
 		val result: SymTable = SymTable.empty
 		ctx.item.asScala.map { itemCtx =>
-			(itemCtx.ID.getText, UnambiguousSymbolInfo(Position(itemCtx.ID.getSymbol.getLine, itemCtx.ID.getSymbol.getCharPositionInLine + 1), memberType))
+			(itemCtx.ID.getText, symbols.UnambiguousSymbolInfo(Position(itemCtx.ID.getSymbol.getLine, itemCtx.ID.getSymbol.getCharPositionInLine + 1), memberType))
 		}.foreach { (symbolName, symbolInfo) => result.combineWith(symbolName, symbolInfo) }
 		result
 	}
@@ -27,6 +28,6 @@ object MemberDefCollector extends SymTableCollector {
 		val methodType: LatteType = TypeCollector.visit(ctx.functionDef)
 		val methodName: String = functionID.getText
 		val position: Position = Position(functionID.getSymbol.getLine, functionID.getSymbol.getCharPositionInLine + 1)
-		SymTable(methodName -> UnambiguousSymbolInfo(position, methodType))
+		SymTable(methodName -> symbols.UnambiguousSymbolInfo(position, methodType))
 	}
 }

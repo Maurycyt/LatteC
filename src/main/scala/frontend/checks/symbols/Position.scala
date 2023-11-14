@@ -1,4 +1,4 @@
-package frontend
+package frontend.checks.symbols
 
 case class Position(line: Int, col: Int) {
 	override def toString: String = if this == Position.predefined then "<predefined>" else s"$line:$col"

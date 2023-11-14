@@ -67,11 +67,11 @@ anyType
     ;
 
 basicType
-    : 'int'     # Int
-    | 'string'  # Str
-    | 'boolean' # Bool
-    | 'void'    # Void
-    | ID        # Class
+    : 'int'     # TInt
+    | 'string'  # TStr
+    | 'boolean' # TBool
+    | 'void'    # TVoid
+    | ID        # TClass
     ;
 
 item

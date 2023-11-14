@@ -1,4 +1,4 @@
-package frontend.checks
+package frontend.checks.symbols
 
 import grammar.{LatteBaseVisitor, LatteParser}
 
@@ -22,7 +22,7 @@ object ClassHierarchyCollector extends LatteBaseVisitor[ClassHierarchyCollector.
 			defaultResult
 	}
 
-	type InheritanceTable = mutable.HashMap[String, String]
+	private type InheritanceTable = mutable.HashMap[String, String]
 
 	private object InheritanceTable {
 		def empty: InheritanceTable = apply()

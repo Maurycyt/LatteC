@@ -1,6 +1,6 @@
 package frontend.checks
 
-import frontend.Position
+import frontend.checks.symbols.Position
 
 trait FrontendError extends Error {
 	def position: Position
