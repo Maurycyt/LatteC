@@ -7,15 +7,23 @@ import scala.collection.mutable
 
 trait SymbolInfo {
 	def declarationPosition: Position
-	def combineWith(other: SymbolInfo): SymbolInfo = {
-		if declarationPosition == other.declarationPosition then
-			this
-		else
-			AmbiguousSymbolInfo(declarationPosition, other.declarationPosition)
+	def combineWith(other: SymbolInfo): SymbolInfo
+}
+case class UnambiguousSymbolInfo(declarationPosition: Position, symbolType: LatteType) extends SymbolInfo {
+	override def combineWith(other: SymbolInfo): SymbolInfo = other match {
+		case UnambiguousSymbolInfo(pos, typ) =>
+			if declarationPosition == pos
+			then this
+			else AmbiguousSymbolInfo(declarationPosition, pos)
+		case AmbiguousSymbolInfo(pos, repos) =>
+			if declarationPosition == pos
+			then other
+			else AmbiguousSymbolInfo(declarationPosition, pos)
 	}
 }
-case class UnambiguousSymbolInfo(declarationPosition: Position, symbolType: LatteType) extends SymbolInfo
-case class AmbiguousSymbolInfo(declarationPosition: Position, redeclarationPosition: Position) extends SymbolInfo
+case class AmbiguousSymbolInfo(declarationPosition: Position, redeclarationPosition: Position) extends SymbolInfo {
+	override def combineWith(other: SymbolInfo): SymbolInfo = this
+}
 type SymTable = mutable.HashMap[String, SymbolInfo]
 type UnambiguousSymTable = mutable.HashMap[String, UnambiguousSymbolInfo]
 
@@ -35,7 +43,7 @@ object SymTable {
 		"readString" -> TFunction(Seq.empty, TStr)
 	).map { (name, symbolType) => (name, symbols.UnambiguousSymbolInfo(Position.predefined, symbolType)) }
 
-	val withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
+	def withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
 
 	extension(symTable: SymTable) {
 		def combineWith(symbolName: String, symbolInfo: SymbolInfo): SymTable = {

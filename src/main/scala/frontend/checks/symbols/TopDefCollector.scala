@@ -9,8 +9,6 @@ import grammar.LatteParser
  * Checks for duplicates and includes predefined functions.
  */
 object TopDefCollector extends SymTableCollector {
-	override def defaultResult: SymTable = SymTable.withLattePredefined
-
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): SymTable = {
 		val name = ctx.ID(0).getText
 		val classDefType = TypeCollector.visitClassDef(ctx)

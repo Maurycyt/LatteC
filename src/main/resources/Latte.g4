@@ -14,12 +14,12 @@ classDef
     ;
 
 memberDef
-    : ';'             # MEmpty
-    | memberVariable  # MVar
-    | memberFunction  # MFun
+    : ';'              # MEmpty
+    | memberVariables  # MVar
+    | memberFunction   # MFun
     ;
 
-memberVariable
+memberVariables
     : anyType item ( ',' item )* ';'
     ;
 

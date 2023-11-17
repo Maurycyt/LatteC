@@ -11,9 +11,7 @@ import scala.jdk.CollectionConverters.*
  * Collects the definitions of members in a class, both variables and functions.
  */
 object MemberDefCollector extends SymTableCollector {
-	override def defaultResult: SymTable = SymTable.empty
-
-	override def visitMemberVariable(ctx: LatteParser.MemberVariableContext): SymTable = {
+	override def visitMemberVariables(ctx: LatteParser.MemberVariablesContext): SymTable = {
 		import SymTable.combineWith
 		val memberType: LatteType = TypeCollector.visit(ctx.anyType)
 		val result: SymTable = SymTable.empty
