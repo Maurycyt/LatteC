@@ -19,10 +19,10 @@ object TypeCollector extends LatteBaseVisitor[LatteType] {
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): LatteType = {
-		val returnType = visit(ctx.anyType).asInstanceOf[TNonFunction]
+		val returnType = visit(ctx.anyType).asInstanceOf[TBasic]
 		val argTypes = if ctx.args == null then Seq.empty else
 			(for childID <- 0 until ctx.args.getChildCount yield visit(ctx.args.getChild(childID)))
-				.collect { case nonFunction: TNonFunction => nonFunction }
+				.collect { case nonFunction: TBasic => nonFunction }
 		TFunction(argTypes, returnType)
 	}
 }

@@ -46,8 +46,8 @@ stmt
     | value '=' expr ';'                        # Ass
     | value '++' ';'                            # Incr
     | value '--' ';'                            # Decr
-    | 'return' expr ';'                         # Ret
-    | 'return' ';'                              # VRet
+    | 'return' expr ';'                         # RetValue
+    | 'return' ';'                              # RetVoid
     | 'if' '(' expr ')' stmt                    # Cond
     | 'if' '(' expr ')' stmt 'else' stmt        # CondElse
     | 'while' '(' expr ')' stmt                 # While
@@ -62,7 +62,7 @@ value
     ;
 
 anyType
-    : basicType         # TBase
+    : basicType         # TBasic
     | basicType '[' ']' # TArr
     ;
 
@@ -80,22 +80,27 @@ item
     ;
 
 expr
-    : ('-'|'!') expr                         # EUnOp
+    : unOp expr                              # EUnOp
     | expr mulOp expr                        # EMulOp
     | expr addOp expr                        # EAddOp
     | expr relOp expr                        # ERelOp
     | <assoc=right> expr '&&' expr           # EAnd
     | <assoc=right> expr '||' expr           # EOr
-    | value                                  # EId
+    | value                                  # EVal
     | INT                                    # EInt
     | 'true'                                 # ETrue
     | 'false'                                # EFalse
+    | STR                                    # EStr
     | 'new' basicType                        # ENew
     | 'new' basicType '[' expr ']'           # ENewArr
     | '(' ID ')' 'null'                      # ENull
     | value '(' ( expr ( ',' expr )* )? ')'  # EFunCall
-    | STR                                    # EStr
     | '(' expr ')'                           # EParen
+    ;
+
+unOp
+    : '-'
+    | '!'
     ;
 
 addOp

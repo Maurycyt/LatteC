@@ -3,16 +3,16 @@ package frontend.checks.types
 trait LatteType
 
 object LatteType {
-	trait TNonFunction extends LatteType // { def size: Int }
+	trait TBasic extends LatteType // { def size: Int }
 
-	case object TInt extends TNonFunction
-	case object TStr extends TNonFunction
-	case object TBool extends TNonFunction
-	case object TVoid extends TNonFunction
+	case object TInt extends TBasic { override val toString: String = "int" }
+	case object TStr extends TBasic { override val toString: String = "str" }
+	case object TBool extends TBasic { override val toString: String = "bool" }
+	case object TVoid extends TBasic { override val toString: String = "void" }
+	case class TClass(name: String) extends TBasic { override val toString: String = s"$name" }
 
-	case class TClass(name: String) extends TNonFunction
-
-	case class TFunction(args: Seq[TNonFunction], result: TNonFunction) extends LatteType
+	case class TArray(underlying: TBasic) extends LatteType { override val toString: String = s"$underlying[]" }
+	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType { override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result" }
 }
 
 trait LatteStmtType {
@@ -31,12 +31,16 @@ object LatteStmtType {
 		override def combineInSeries(other: LatteStmtType): LatteStmtType = other
 	}
 
-	case class MightReturn(latteType: LatteType) extends LatteStmtType {
+	trait CanReturn extends LatteStmtType {
+		def latteType: LatteType
+	}
+
+	case class MightReturn(latteType: LatteType) extends CanReturn {
 		override def combineInSeries(other: LatteStmtType): LatteStmtType = ???
 		override def combineInParallel(other: LatteStmtType): LatteStmtType = ???
 	}
 
-	case class MustReturn(latteType: LatteType) extends LatteStmtType {
+	case class MustReturn(latteType: LatteType) extends CanReturn {
 		override def combineInSeries(other: LatteStmtType): LatteStmtType = ???
 		override def combineInParallel(other: LatteStmtType): LatteStmtType = ???
 	}

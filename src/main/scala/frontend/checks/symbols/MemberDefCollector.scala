@@ -20,7 +20,7 @@ object MemberDefCollector extends LatteBaseVisitor[mutable.Queue[(String, Symbol
 		val memberType: LatteType = TypeCollector.visit(ctx.anyType)
 		val result: returnType = mutable.Queue.empty
 		ctx.ID.asScala.map { itemCtx =>
-			(itemCtx.getText, symbols.SymbolInfo(Position(itemCtx.getSymbol.getLine, itemCtx.getSymbol.getCharPositionInLine + 1), memberType))
+			(itemCtx.getText, symbols.SymbolInfo(Position.fromToken(itemCtx.getSymbol), memberType))
 		}.foreach { (symbolName, symbolInfo) => result.append(symbolName -> symbolInfo) }
 		result
 	}
@@ -29,7 +29,7 @@ object MemberDefCollector extends LatteBaseVisitor[mutable.Queue[(String, Symbol
 		val functionID: TerminalNode = ctx.functionDef.ID
 		val methodType: LatteType = TypeCollector.visit(ctx.functionDef)
 		val methodName: String = functionID.getText
-		val position: Position = Position(functionID.getSymbol.getLine, functionID.getSymbol.getCharPositionInLine + 1)
+		val position: Position = Position.fromToken(functionID.getSymbol)
 		mutable.Queue(methodName -> symbols.SymbolInfo(position, methodType))
 	}
 }

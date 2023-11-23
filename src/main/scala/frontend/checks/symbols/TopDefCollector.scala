@@ -12,14 +12,14 @@ object TopDefCollector extends SymTableCollector {
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): SymTable = {
 		val name = ctx.ID(0).getText
 		val classDefType = TypeCollector.visitClassDef(ctx)
-		val declarationPosition = Position(ctx.ID(0).getSymbol.getLine, ctx.ID(0).getSymbol.getCharPositionInLine + 1)
+		val declarationPosition = Position.fromToken(ctx.ID(0).getSymbol)
 		SymTable(name -> symbols.SymbolInfo(declarationPosition, classDefType))
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): SymTable = {
 		val name = ctx.ID.getText
 		val funDefType = TypeCollector.visitFunctionDef(ctx)
-		val declarationPosition = Position(ctx.ID.getSymbol.getLine, ctx.ID.getSymbol.getCharPositionInLine + 1)
+		val declarationPosition = Position.fromToken(ctx.ID.getSymbol)
 		SymTable(name -> symbols.SymbolInfo(declarationPosition, funDefType))
 	}
 

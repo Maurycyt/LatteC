@@ -1,5 +1,4 @@
-import frontend.checks.symbols.{ClassTable, SymTable}
-import frontend.checks.symbols.{ClassTableCollector, TopDefCollector}
+import frontend.checks.symbols.{ClassTable, ClassTableCollector, SymTable, TopDefCollector}
 import frontend.checks.FrontendError
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
@@ -25,6 +24,11 @@ def main(inputFileString: String, debug: Boolean = false): Unit = {
 			exitWithError(s"${ptg.getMessage}\nCause:\n${ptg.cause}")
 		case f: FrontendError =>
 			if (debug) f.printStackTrace()
-			exitWithError(f.frontendErrorToString)
+			val fileReader = scala.io.Source.fromFile(inputFileString)
+			exitWithError(s"""
+					 |${f.frontendErrorToString}
+					 ||${fileReader.getLines.drop(f.position.line - 1).next}
+					 ||${" " * (f.position.col - 1)}^
+					 |""".stripMargin)
 	}
 }

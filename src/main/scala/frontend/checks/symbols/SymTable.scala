@@ -16,6 +16,10 @@ case class SymbolInfo(declarationPosition: Position, symbolType: LatteType)
 // |          Symbol Table             |
 // -------------------------------------
 
+case class SymbolNotFoundError(position: Position, symbolName: String) extends FrontendError {
+	val message: String = s"Symbol '$symbolName' not found."
+}
+
 type SymTable = mutable.HashMap[String, SymbolInfo]
 
 object SymTable {
@@ -37,8 +41,8 @@ object SymTable {
 
 	def withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
 
-	case class RedeclarationError(position: Position, name: String, previousPosition: Position) extends FrontendError {
-		override def message: String = s"Redeclaration of symbol $name.\n\tNote: previous declaration at $previousPosition."
+	private case class RedeclarationError(position: Position, name: String, previousPosition: Position) extends FrontendError {
+		override val message: String = s"Redeclaration of symbol '$name'. Previous declaration at $previousPosition."
 	}
 
 	extension(symTable: SymTable) {
@@ -57,6 +61,11 @@ object SymTable {
 		def copy: SymTable = {
 			mutable.HashMap.from(symTable)
 		}
+
+		def getOrThrow(symbolName: String, position: Position): SymbolInfo = symTable.get(symbolName) match {
+			case Some(symbolInfo) => symbolInfo
+			case None => throw SymbolNotFoundError(position, symbolName)
+		}
 	}
 }
 
@@ -73,6 +82,39 @@ object ClassTable {
 	extension(classTable: ClassTable) {
 		def copy: ClassTable = {
 			classTable.map((className, classSymTable) => (className, SymTable.copy(classSymTable)))
+		}
+
+		def getClassOrThrow(className: String, position: Position): SymTable = classTable.get(className) match {
+			case Some(symTable) => symTable
+			case None => throw SymbolNotFoundError(position, className)
+		}
+
+		def getOrThrow(className: String, symbolName: String, position: Position): SymbolInfo = classTable.get(className).flatMap(_.get(symbolName)) match {
+			case Some(symbolInfo) => symbolInfo
+			case None => throw SymbolNotFoundError(position, symbolName)
+		}
+	}
+}
+
+// -------------------------------------
+// |          Symbol Stack             |
+// -------------------------------------
+
+type SymbolStack = List[SymTable]
+
+object SymbolStack {
+	def empty: SymbolStack = List.empty
+	def apply(inits: SymTable*): SymbolStack = List.from(inits)
+
+	extension(symbolStack: SymbolStack) {
+		def getOrThrow(symbolName: String, position: Position): SymbolInfo = {
+			symbolStack.head.get(symbolName) match {
+				case Some(result) => result
+				case None => symbolStack match {
+					case _ :: tail => tail.getOrThrow(symbolName, position)
+					case Nil => throw SymbolNotFoundError(position, symbolName)
+				}
+			}
 		}
 	}
 }
