@@ -14,18 +14,18 @@ object ClassHierarchyCollector extends LatteBaseVisitor[ClassHierarchyCollector.
 	override def visitDFun(ctx: LatteParser.DFunContext): InheritanceTable = defaultResult
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): InheritanceTable = {
+		val name = ctx.ID(0).getText
 		if ctx.ID.size > 1 then
-			val name = ctx.ID(0).getText
 			val parentName = ctx.ID(1).getText
-			InheritanceTable(name -> parentName)
+			InheritanceTable(name -> (ctx, Some(parentName)))
 		else
-			defaultResult
+			InheritanceTable(name -> (ctx, None))
 	}
 
-	private type InheritanceTable = mutable.HashMap[String, String]
+	private type InheritanceTable = mutable.HashMap[String, (LatteParser.ClassDefContext, Option[String])]
 
 	private object InheritanceTable {
 		def empty: InheritanceTable = apply()
-		def apply(inits: (String, String)*): InheritanceTable = mutable.HashMap.from(inits)
+		def apply(inits: (String, (LatteParser.ClassDefContext, Option[String]))*): InheritanceTable = mutable.HashMap.from(inits)
 	}
 }

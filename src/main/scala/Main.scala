@@ -1,5 +1,5 @@
-import frontend.checks.symbols.{UnambiguousClassTable, UnambiguousSymTable}
-import frontend.checks.symbols.{ClassMemberCollector, TopDefCollector}
+import frontend.checks.symbols.{ClassTable, SymTable}
+import frontend.checks.symbols.{ClassTableCollector, TopDefCollector}
 import frontend.checks.FrontendError
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
@@ -13,17 +13,18 @@ def exitWithError(message: String, status: Int = 1): Unit = {
 }
 
 @main
-def main(inputFileString: String): Unit = {
+def main(inputFileString: String, debug: Boolean = false): Unit = {
 	try {
 		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
-		val topDefSymbols: UnambiguousSymTable = TopDefCollector.collectUnambiguous(program)
-		val classSymbols: UnambiguousClassTable = ClassMemberCollector.collectUnambiguous(program)
+		val topDefSymbols: SymTable = TopDefCollector.visitProgram(program)
+		val classSymbols: ClassTable = ClassTableCollector.visitProgram(program)
 		println(s"There are ${topDefSymbols.size} top defs:")
 		topDefSymbols.foreachEntry { (name, topDefType) => println(s"$name: $topDefType") }
 	} catch {
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
 			exitWithError(s"${ptg.getMessage}\nCause:\n${ptg.cause}")
 		case f: FrontendError =>
+			if (debug) f.printStackTrace()
 			exitWithError(f.frontendErrorToString)
 	}
 }

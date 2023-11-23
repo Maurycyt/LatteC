@@ -1,7 +1,6 @@
 package frontend.checks.types
 
-import frontend.checks.symbols.LatteType
-import frontend.checks.symbols.LatteType.*
+import LatteType.*
 import grammar.{LatteBaseVisitor, LatteParser}
 
 /**

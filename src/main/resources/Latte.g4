@@ -20,7 +20,7 @@ memberDef
     ;
 
 memberVariables
-    : anyType item ( ',' item )* ';'
+    : anyType ID ( ',' ID )* ';'
     ;
 
 memberFunction

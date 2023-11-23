@@ -13,18 +13,18 @@ object TopDefCollector extends SymTableCollector {
 		val name = ctx.ID(0).getText
 		val classDefType = TypeCollector.visitClassDef(ctx)
 		val declarationPosition = Position(ctx.ID(0).getSymbol.getLine, ctx.ID(0).getSymbol.getCharPositionInLine + 1)
-		SymTable(name -> symbols.UnambiguousSymbolInfo(declarationPosition, classDefType))
+		SymTable(name -> symbols.SymbolInfo(declarationPosition, classDefType))
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): SymTable = {
 		val name = ctx.ID.getText
 		val funDefType = TypeCollector.visitFunctionDef(ctx)
 		val declarationPosition = Position(ctx.ID.getSymbol.getLine, ctx.ID.getSymbol.getCharPositionInLine + 1)
-		SymTable(name -> symbols.UnambiguousSymbolInfo(declarationPosition, funDefType))
+		SymTable(name -> symbols.SymbolInfo(declarationPosition, funDefType))
 	}
 
-	def collectUnambiguous(ctx: LatteParser.ProgramContext): UnambiguousSymTable = {
-		import SymTable.unambiguous
-		super.visitProgram(ctx).unambiguous
+	override def visitProgram(ctx: LatteParser.ProgramContext): SymTable = {
+		import SymTable.combineAll
+		SymTable.withLattePredefined.combineAll(super.visitProgram(ctx))
 	}
 }
