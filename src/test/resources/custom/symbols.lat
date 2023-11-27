@@ -1,9 +1,0 @@
-class B extends A {
-    int x, v;
-
-    int f() {}
-}
-
-class A {
-    int y, z;
-}
