@@ -1,15 +1,24 @@
 package frontend.checks.types
 
-import frontend.checks.FrontendError
-import frontend.checks.symbols.Position
-import org.antlr.v4.runtime.ParserRuleContext
+import frontend.{FrontendError, Position}
+import grammar.LatteParser
 
-case class TypeMismatchError(position: Position, to: Position, expected: Seq[LatteType], actual: LatteType) extends FrontendError {
-	val message: String = s"Expression from $position to $to is expected to have type ${expected.mkString("'", "' or '", "'")} but has type '$actual'."
+case class ExprTypeMismatchError(position: Position, to: Position, expected: Seq[LatteType], actual: LatteType) extends FrontendError {
+	val message: String = s"Expression from $position to $to has type '$actual' but is expected to have type ${expected.mkString("'", "' or '", "'")}."
 }
 
-object TypeMismatchError {
-	def apply(ctx: ParserRuleContext, expected: Seq[LatteType], actual: LatteType): TypeMismatchError = {
-		TypeMismatchError(Position.fromToken(ctx.start), Position.fromToken(ctx.stop), expected, actual)
+object ExprTypeMismatchError {
+	def apply(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expected: Seq[LatteType], actual: LatteType): ExprTypeMismatchError = {
+		ExprTypeMismatchError(Position.fromToken(ctx.start), Position.fromToken(ctx.stop), expected, actual)
+	}
+}
+
+case class StmtTypeMismatchError(position: Position, to: Position, expected: LatteType, actual: LatteType) extends FrontendError {
+	val message: String = s"Statement from $position to $to returns type '$actual' but is expected to return type '$expected'"
+}
+
+object StmtTypeMismatchError {
+	def apply(ctx: LatteParser.StmtContext | LatteParser.BlockContext, expected: LatteType, actual: LatteType): StmtTypeMismatchError = {
+		StmtTypeMismatchError(Position.fromToken(ctx.start), Position.fromToken(ctx.stop), expected, actual)
 	}
 }

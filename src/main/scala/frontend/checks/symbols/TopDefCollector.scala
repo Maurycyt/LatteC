@@ -2,6 +2,7 @@ package frontend.checks.symbols
 
 import frontend.checks.symbols
 import frontend.checks.types.TypeCollector
+import frontend.Position
 import grammar.LatteParser
 
 /**

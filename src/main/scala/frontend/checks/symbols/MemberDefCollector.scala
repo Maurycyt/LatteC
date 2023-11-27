@@ -2,6 +2,7 @@ package frontend.checks.symbols
 
 import frontend.checks.symbols
 import frontend.checks.types.{LatteType, TypeCollector}
+import frontend.Position
 import grammar.{LatteBaseVisitor, LatteParser}
 import org.antlr.v4.runtime.tree.TerminalNode
 
@@ -27,7 +28,7 @@ object MemberDefCollector extends LatteBaseVisitor[mutable.Queue[(String, Symbol
 
 	override def visitMemberFunction(ctx: LatteParser.MemberFunctionContext): returnType = {
 		val functionID: TerminalNode = ctx.functionDef.ID
-		val methodType: LatteType = TypeCollector.visit(ctx.functionDef)
+		val methodType: LatteType = TypeCollector.visitFunctionDef(ctx.functionDef)
 		val methodName: String = functionID.getText
 		val position: Position = Position.fromToken(functionID.getSymbol)
 		mutable.Queue(methodName -> symbols.SymbolInfo(position, methodType))

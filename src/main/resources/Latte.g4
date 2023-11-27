@@ -56,7 +56,8 @@ stmt
     ;
 
 value
-    : ID                  # VID
+    : 'self'              # VSelf
+    | ID                  # VID
     | value '.' ID        # VMem
     | value '[' expr ']'  # VArr
     ;
@@ -75,8 +76,7 @@ basicType
     ;
 
 item
-    : ID
-    | ID '=' expr
+    : ID ('=' expr)?
     ;
 
 expr

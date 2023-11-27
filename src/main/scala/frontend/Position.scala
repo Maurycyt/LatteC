@@ -1,4 +1,4 @@
-package frontend.checks.symbols
+package frontend
 
 import org.antlr.v4.runtime.Token
 

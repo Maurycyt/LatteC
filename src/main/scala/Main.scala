@@ -1,8 +1,10 @@
-import frontend.checks.symbols.{ClassTable, ClassTableCollector, SymTable, TopDefCollector}
-import frontend.checks.FrontendError
+import frontend.checks.symbols.*
+import frontend.checks.types.LatteType.{TFunction, TInt}
+import frontend.checks.types.StatementTypeChecker
+import frontend.parsing.ParseTreeGenerator
+import frontend.{FrontendError, Position}
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
-import parsing.ParseTreeGenerator
 
 def exitWithError(message: String, status: Int = 1): Unit = {
 	if (message.nonEmpty) {
@@ -12,23 +14,42 @@ def exitWithError(message: String, status: Int = 1): Unit = {
 }
 
 @main
-def main(inputFileString: String, debug: Boolean = false): Unit = {
+def main(inputFileString: String, debug: Boolean): Unit = {
 	try {
+		// Get symbols
 		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
 		val topDefSymbols: SymTable = TopDefCollector.visitProgram(program)
-		val classSymbols: ClassTable = ClassTableCollector.visitProgram(program)
-		println(s"There are ${topDefSymbols.size} top defs:")
-		topDefSymbols.foreachEntry { (name, topDefType) => println(s"$name: $topDefType") }
+		given symbolStack: SymbolStack = topDefSymbols :: Nil
+		given classSymbols: ClassTable = ClassTableCollector.visitProgram(program)
+
+		// Check types and flow.
+		StatementTypeChecker().visitProgram(program)
+
+		// Check if int main() is defined.
+		{
+			import SymTable.getOrThrow
+			val mainSymbol = topDefSymbols.getOrThrow("main", Position.fromToken(program.stop))
+			val mainType = mainSymbol.symbolType
+			val expectedMainType = TFunction(Seq.empty, TInt)
+			if (mainType != expectedMainType) throw new FrontendError {
+				override val position: Position = mainSymbol.declarationPosition
+				override val message: String = s"Main symbol 'main' has type '$mainType' but is expected to have type '$expectedMainType'."
+			}
+		}
+
+		println(s"${Console.BOLD}${Console.GREEN}OK!")
 	} catch {
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
-			exitWithError(s"${ptg.getMessage}\nCause:\n${ptg.cause}")
+			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}")
 		case f: FrontendError =>
 			if (debug) f.printStackTrace()
 			val fileReader = scala.io.Source.fromFile(inputFileString)
+			val line: String = fileReader.getLines.drop(f.position.line - 1).next
 			exitWithError(s"""
-					 |${f.frontendErrorToString}
-					 ||${fileReader.getLines.drop(f.position.line - 1).next}
-					 ||${" " * (f.position.col - 1)}^
+					 |${Console.BOLD}${Console.RED}WRONG!
+					 |\t${f.frontendErrorToString}
+					 |\t|$line
+					 |\t|${line.collect { case '\t' => '\t' case _ => ' ' } .take(f.position.col - 1)}^
 					 |""".stripMargin)
 	}
 }

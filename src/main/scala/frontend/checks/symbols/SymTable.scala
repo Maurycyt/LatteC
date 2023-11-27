@@ -1,8 +1,9 @@
 package frontend.checks.symbols
 
 import frontend.checks.types.LatteType.*
-import frontend.checks.{symbols, FrontendError}
+import frontend.checks.symbols
 import frontend.checks.types.LatteType
+import frontend.{FrontendError, Position}
 
 import scala.collection.mutable
 
@@ -73,25 +74,34 @@ object SymTable {
 // |           Class Table             |
 // -------------------------------------
 
-type ClassTable = mutable.HashMap[String, SymTable]
+// Each class has its symbols and possibly a parent class.
+type ClassTable = mutable.HashMap[String, (SymTable, Option[String])]
 
 object ClassTable {
 	def empty: ClassTable = mutable.HashMap.empty
-	def apply(inits: (String, SymTable)*): ClassTable = mutable.HashMap.from(inits)
+	def apply(inits: (String, (SymTable, Option[String]))*): ClassTable = mutable.HashMap.from(inits)
 
 	extension(classTable: ClassTable) {
 		def copy: ClassTable = {
-			classTable.map((className, classSymTable) => (className, SymTable.copy(classSymTable)))
+			classTable.map { case (className, (classSymTable, parentName)) => className -> (SymTable.copy(classSymTable), parentName) }
 		}
 
-		def getClassOrThrow(className: String, position: Position): SymTable = classTable.get(className) match {
-			case Some(symTable) => symTable
+		def getClassOrThrow(className: String, position: Position): (SymTable, Option[String]) = classTable.get(className) match {
+			case Some(symTableAndParent) => symTableAndParent
 			case None => throw SymbolNotFoundError(position, className)
 		}
 
-		def getOrThrow(className: String, symbolName: String, position: Position): SymbolInfo = classTable.get(className).flatMap(_.get(symbolName)) match {
+		def getOrThrow(className: String, symbolName: String, position: Position): SymbolInfo = classTable.get(className).flatMap(_._1.get(symbolName)) match {
 			case Some(symbolInfo) => symbolInfo
 			case None => throw SymbolNotFoundError(position, symbolName)
+		}
+
+		def collectAncestors(className: String): List[TClass] = {
+			def doCollectAncestors(className: Option[String]): List[TClass] = className match {
+				case None => Nil
+				case Some(c) => TClass(c) :: doCollectAncestors(classTable(c)._2)
+			}
+			doCollectAncestors(Some(className))
 		}
 	}
 }
@@ -107,14 +117,13 @@ object SymbolStack {
 	def apply(inits: SymTable*): SymbolStack = List.from(inits)
 
 	extension(symbolStack: SymbolStack) {
-		def getOrThrow(symbolName: String, position: Position): SymbolInfo = {
-			symbolStack.head.get(symbolName) match {
-				case Some(result) => result
-				case None => symbolStack match {
-					case _ :: tail => tail.getOrThrow(symbolName, position)
-					case Nil => throw SymbolNotFoundError(position, symbolName)
+		def getOrThrow(symbolName: String, position: Position): SymbolInfo = symbolStack match {
+			case head :: tail =>
+				head.get(symbolName) match {
+					case Some(result) => result
+					case None => tail.getOrThrow(symbolName, position)
 				}
-			}
+			case Nil => throw SymbolNotFoundError(position, symbolName)
 		}
 	}
 }

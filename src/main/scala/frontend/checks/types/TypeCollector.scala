@@ -3,6 +3,8 @@ package frontend.checks.types
 import LatteType.*
 import grammar.{LatteBaseVisitor, LatteParser}
 
+import scala.jdk.CollectionConverters.*
+
 /**
  * Gets the type of a type specifier.
  */
@@ -14,15 +16,16 @@ object TypeCollector extends LatteBaseVisitor[LatteType] {
 
 	override def visitTClass(ctx: LatteParser.TClassContext): LatteType = TClass(ctx.ID.getText)
 
-	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteType = {
-		TClass(ctx.ID(0).getText)
-	}
+	override def visitTArr(ctx: LatteParser.TArrContext): LatteType = TArray(visit(ctx.basicType).asInstanceOf[TBasic])
+
+	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteType = TClass(ctx.ID(0).getText)
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): LatteType = {
-		val returnType = visit(ctx.anyType).asInstanceOf[TBasic]
-		val argTypes = if ctx.args == null then Seq.empty else
-			(for childID <- 0 until ctx.args.getChildCount yield visit(ctx.args.getChild(childID)))
-				.collect { case nonFunction: TBasic => nonFunction }
+		val returnType = visit(ctx.anyType)
+		val argTypes =
+			if ctx.args == null
+			then Seq.empty
+			else ctx.args.anyType.asScala.map { tCtx => visit(tCtx) }.toSeq
 		TFunction(argTypes, returnType)
 	}
 }
