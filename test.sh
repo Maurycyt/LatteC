@@ -7,11 +7,11 @@ NC='\033[0m'
 SUCCESS=true
 
 runOn() {
-  sbt "run $1 true" > /dev/null
+  ./latc "$1" &> /dev/null
 }
 
 runOnAllInDirectory () {
-  echo "Running $1"
+  echo "Running on all files in $1"
   for file in "${testPath}$1"/*.lat
   do
     runOn "${file}"

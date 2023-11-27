@@ -37,14 +37,14 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 			}
 		}
 
-		println(s"${Console.BOLD}${Console.GREEN}OK!")
+		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!")
 	} catch {
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
 			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}")
 		case f: FrontendError =>
 			if (debug) f.printStackTrace()
 			val fileReader = scala.io.Source.fromFile(inputFileString)
-			val line: String = fileReader.getLines.drop(f.position.line - 1).next
+			val line: String = fileReader.getLines.drop(f.position.line - 1).nextOption.getOrElse("")
 			exitWithError(s"""
 					 |${Console.BOLD}${Console.RED}WRONG!
 					 |\t${f.frontendErrorToString}

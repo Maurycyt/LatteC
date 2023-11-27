@@ -128,7 +128,7 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassT
 			case TFunction(expectedArgTypes, resultType) =>
 				val argExprs: Seq[LatteParser.ExprContext] = ctx.expr.asScala.toSeq
 				if (expectedArgTypes.size != argExprs.size) throw new FrontendError {
-					override val position: Position = Position.fromToken(argExprs.last.stop)
+					override val position: Position = Position.fromToken(ctx.stop)
 					override val message: String = s"Function applied to ${argExprs.size} arguments when ${expectedArgTypes.size} were expected."
 				}
 				argExprs.zip(expectedArgTypes).foreach { (expr, expectedType) => matchExprTypeWithExpected(expr, Seq(expectedType)) }

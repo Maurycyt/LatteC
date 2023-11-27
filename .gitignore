@@ -4,3 +4,5 @@ target/
 
 /dependencies.cp
 /src/main/java/grammar/*
+/latc
+/latc_llvm
