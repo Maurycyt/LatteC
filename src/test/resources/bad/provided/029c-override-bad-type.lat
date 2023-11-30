@@ -1,0 +1,17 @@
+class A {
+  void test() { printString("Nie ma a..."); }
+}
+class B extends A {
+  void test(int a) { printString("Oto a:"); printInt(a); }
+}
+
+int main() {
+ A a = new A;
+ B b = new B;
+
+ a=b;
+
+ a.test();
+
+ return 0;
+}

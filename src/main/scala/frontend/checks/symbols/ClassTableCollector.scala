@@ -1,6 +1,7 @@
 package frontend.checks.symbols
 
 import frontend.checks.types.LatteType.TFunction
+import frontend.checks.types.{LatteType, StmtTypeMismatchError}
 import grammar.{LatteBaseVisitor, LatteParser}
 
 import scala.collection.mutable
@@ -40,7 +41,11 @@ object ClassTableCollector extends LatteBaseVisitor[ClassTable] {
 				// If the member is a function and it already appears in the parent, then it must be replaced.
 				MemberDefCollector.visit(memberDef).foreach {
 					case (symbolName, symbolInfo @ SymbolInfo(_, t)) => t match {
-						case _: TFunction => resultTable(targetClass)._1.put(symbolName, symbolInfo)
+						case fType: TFunction =>
+							val previousType: Option[LatteType] = resultTable(targetClass)._1.get(symbolName).map(_.symbolType)
+							if previousType.isEmpty || fType.isSubtypeOf(previousType.get)(resultTable)
+							then resultTable(targetClass)._1.put(symbolName, symbolInfo)
+							else throw StmtTypeMismatchError(memberDef, previousType.get, fType)
 						case _ => resultTable(targetClass)._1.combineWith(symbolName, symbolInfo)
 					}
 				}

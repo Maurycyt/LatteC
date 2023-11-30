@@ -30,7 +30,9 @@ object ParseTreeGenerator {
 			val inputStream = CharStreams.fromFileName(filePathString)
 			val latteLexer = new LatteLexer(inputStream)
 			val latteParser = new LatteParser(new CommonTokenStream(latteLexer))
+			latteLexer.removeErrorListeners()
 			latteParser.removeErrorListeners()
+			latteLexer.addErrorListener(AmbiguityListener)
 			latteParser.addErrorListener(AmbiguityListener)
 			latteParser.program
 		} catch {

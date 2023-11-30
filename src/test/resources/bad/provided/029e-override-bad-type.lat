@@ -1,0 +1,13 @@
+class A {
+ void test() {}
+}
+class B extends A {
+ void test(int a) {}
+}
+
+int main() {
+ A a = new A;
+ B b = new B;
+
+ return 0;
+}

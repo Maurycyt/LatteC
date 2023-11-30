@@ -37,10 +37,10 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 			}
 		}
 
-		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!")
+		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!${Console.RESET}")
 	} catch {
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
-			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}")
+			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}${Console.RESET}")
 		case f: FrontendError =>
 			if (debug) f.printStackTrace()
 			val fileReader = scala.io.Source.fromFile(inputFileString)
@@ -50,6 +50,6 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 					 |\t${f.frontendErrorToString}
 					 |\t|$line
 					 |\t|${line.collect { case '\t' => '\t' case _ => ' ' } .take(f.position.col - 1)}^
-					 |""".stripMargin)
+					 |${Console.RESET}""".stripMargin)
 	}
 }

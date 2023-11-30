@@ -286,7 +286,7 @@ class StatementTypeChecker(
 	override def visitCond(ctx: LatteParser.CondContext): LatteStmtType = {
 		// Get the types of the expression and statement
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
-		val stmtType = visit(ctx.stmt)
+		val stmtType = withNewScopeDo() { visit(ctx.stmt) }
 
 		// If the expression is false, throw unreachable.
 		// If it is true, return whatever the statement returns.
@@ -305,8 +305,8 @@ class StatementTypeChecker(
 	override def visitCondElse(ctx: LatteParser.CondElseContext): LatteStmtType = {
 		// Get the types of the expression and statements
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
-		val stmtTrueType = visit(ctx.stmt(0))
-		val stmtFalseType = visit(ctx.stmt(1))
+		val stmtTrueType = withNewScopeDo() { visit(ctx.stmt(0)) }
+		val stmtFalseType = withNewScopeDo() { visit(ctx.stmt(1)) }
 
 		// If the statement types don't match, throw.
 		(stmtTrueType, stmtFalseType) match {
@@ -334,15 +334,16 @@ class StatementTypeChecker(
 	override def visitWhile(ctx: LatteParser.WhileContext): LatteStmtType = {
 		// Get the types of the expression and statement
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
-		val stmtType = visit(ctx.stmt)
+		val stmtType = withNewScopeDo() { visit(ctx.stmt) }
 
 		// If the expression is false, throw unreachable.
 		// If it is true and the statement does not return, return Loops
-		// If it is true and the statement can return, return statement with lost confidence
+		// If it is true and the statement can return, return statement with *increased* confidence
 		// If it is unknown, return statement with lost confidence
 		(ctx.expr, stmtType) match {
 //			case (_: LatteParser.EFalseContext, _) => throw UnreachableCodeError(Position.fromToken(ctx.stmt.start))
 			case (_: LatteParser.ETrueContext, _: DoesNotReturn) => Loops
+			case (_: LatteParser.ETrueContext, canReturn: CanReturn) => MustReturn(canReturn.latteType)
 			case _ => stmtType.loseConfidence
 		}
 	}
@@ -352,7 +353,9 @@ class StatementTypeChecker(
 		val iteratorType = TypeCollector.visit(ctx.basicType).asInstanceOf[TBasic]
 		val iteratorName = ctx.ID.getText
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TArray(iteratorType)))
-		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorType))) { visit(ctx.stmt) }
+		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorType))) {
+			withNewScopeDo() { visit(ctx.stmt) }
+		}
 
 		// The loop might run over an array of size 0.
 		// In this case we cannot assume that it breaks flow if the statement breaks flow.

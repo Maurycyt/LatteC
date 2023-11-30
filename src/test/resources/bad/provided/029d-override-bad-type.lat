@@ -1,0 +1,41 @@
+class A {
+  void test() { printString("Nie ma a..."); }
+}
+class B extends A {
+  void test(int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8, int a9, int a10,
+       int b1, int b2, int b3, int b4, int b5, int b6, int b7, int b8, int b9, int b10) {
+    printString("Oto a:");
+    a1++;
+    a2++;
+    a3++;
+    a4++;
+    a5++;
+    a6++;
+    a7++;
+    a8++;
+    a9++;
+    a10++;
+    b1++;
+    b2++;
+    b3++;
+    b4++;
+    b5++;
+    b6++;
+    b7++;
+    b8++;
+    b9++;
+    b10++;
+    printInt(a1+a2+a3+a4+a5+a6+a7+a8+a9+a10+b1+b2+b3+b4+b5+b6+b7+b8+b9+b10);
+  }
+}
+
+int main() {
+ A a = new A;
+ B b = new B;
+
+ a=b;
+
+ a.test();
+
+ return 0;
+}

@@ -1,0 +1,16 @@
+int f(int x) { 
+  printString("A teraz...");
+  return x+1;
+}
+
+int main() {
+
+    if (f(2)>2)
+	    printString("A kuku");
+    else
+        string x="Ala ma kota";
+     
+    printString(x);
+
+    return 0;	
+}

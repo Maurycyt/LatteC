@@ -20,6 +20,7 @@ build: build.sbt
 clean:
 	sbt clean
 	rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
+	rm -rf target/ project/target/
 
 .PHONY: test
 test: ${MAIN_CLASSPATH}main.built

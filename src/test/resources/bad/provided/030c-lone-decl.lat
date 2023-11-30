@@ -1,0 +1,14 @@
+int f(int x) {
+  printString("A teraz...");
+  return x+1;
+}
+
+int main() {
+
+    while (f(2)<2)
+        string x="Ala ma kota";
+
+    printString(x);
+
+    return 0;
+}

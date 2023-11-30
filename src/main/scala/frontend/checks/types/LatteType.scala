@@ -26,7 +26,14 @@ object LatteType {
 
 	case class TArray(underlying: TBasic) extends LatteType { override val toString: String = s"$underlying[]" }
 
-	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType { override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result" }
+	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType {
+		override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result"
+		override def isSubtypeOf(other: LatteType)(implicit classTable: ClassTable): Boolean = other match {
+			case TFunction(otherArgs, otherResult) =>
+				args.size == otherArgs.size && args.zip(otherArgs).forall { (arg, otherArg) => otherArg.isSubtypeOf(arg) } && result.isSubtypeOf(otherResult)
+			case _ => false
+		}
+	}
 }
 
 sealed trait LatteStmtType {

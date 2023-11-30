@@ -18,7 +18,7 @@ case class StmtTypeMismatchError(position: Position, to: Position, expected: Lat
 }
 
 object StmtTypeMismatchError {
-	def apply(ctx: LatteParser.StmtContext | LatteParser.BlockContext, expected: LatteType, actual: LatteType): StmtTypeMismatchError = {
+	def apply(ctx: LatteParser.StmtContext | LatteParser.BlockContext | LatteParser.MemberDefContext, expected: LatteType, actual: LatteType): StmtTypeMismatchError = {
 		StmtTypeMismatchError(Position.fromToken(ctx.start), Position.fromToken(ctx.stop), expected, actual)
 	}
 }

@@ -1,0 +1,17 @@
+class A {
+ string test() { return "A kuku"; }
+}
+
+class B extends A {
+ int test() { printString("A teraz..."); return 1; }
+}
+
+int main() {
+ A a = new A;
+ B b = new B;
+
+ a = b;
+ printString(a.test());
+
+ return 0;
+}

@@ -1,0 +1,23 @@
+class A {
+    void print() { printString("A"); return; }
+}
+
+class B extends A {
+    int value;
+    void print() { printString("B("); printInt(value); printString(")"); return; }
+}
+
+int main() {
+    A[] arrayOfA = new A[2];
+    arrayOfA[0] = new A;
+    B  myB = new B;
+    myB.value = readInt();
+    arrayOfA[1] = myB;
+
+    for(A a : arrayOfA) {
+        a.print();
+        printString("\n");
+    }
+
+    return 0;
+}

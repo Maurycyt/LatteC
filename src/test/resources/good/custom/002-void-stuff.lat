@@ -1,0 +1,14 @@
+void f() {}
+
+void g(void x, void y) {
+    if (x == y)
+        printString("YAY!");
+    else
+        printString("NAY!");
+}
+
+int main() {
+    void x, y = f();
+    g(x, y);
+    return 0;
+}
