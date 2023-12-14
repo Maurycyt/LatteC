@@ -93,7 +93,15 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassT
 		}
 	}
 
-	override def visitEInt(ctx: LatteParser.EIntContext): LatteType = TInt
+	override def visitEInt(ctx: LatteParser.EIntContext): LatteType = {
+		ctx.getText.toIntOption match {
+			case None => throw new FrontendError {
+				override def position: Position = Position.fromToken(ctx.start)
+				override def message: String = s"Literal ${ctx.getText} is out of range of the integer type."
+			}
+				case _ => TInt
+		}
+	}
 	override def visitETrue(ctx: LatteParser.ETrueContext): LatteType = TBool
 	override def visitEFalse(ctx: LatteParser.EFalseContext): LatteType = TBool
 	override def visitEStr(ctx: LatteParser.EStrContext): LatteType = TStr
@@ -111,8 +119,11 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassT
 		TypeCollector.visit(ctx.basicType) match {
 			case classType @ TClass(className) =>
 				classTable.getClassOrThrow(className, Position.fromToken(ctx.basicType.start))
+				matchExprTypeWithExpected(ctx.expr, Seq(TInt))
 				TArray(classType)
-			case basic: TBasic => TArray(basic)
+			case basic: TBasic =>
+				matchExprTypeWithExpected(ctx.expr, Seq(TInt))
+				TArray(basic)
 			case other => throw ExprTypeMismatchError(ctx, Seq(TClass("<non array>")), other)
 		}
 	}
@@ -253,6 +264,11 @@ class StatementTypeChecker(
 	}
 
 	override def visitAss(ctx: LatteParser.AssContext): LatteStmtType = {
+		if ctx.value().getText == "self" then
+			throw new FrontendError {
+				override def position: Position = Position.fromToken(ctx.value.start)
+				override def message: String = "Assigning to self is forbidden."
+			}
 		val valueType = ExpressionTypeChecker().visit(ctx.value)
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(valueType))
 		Ignored

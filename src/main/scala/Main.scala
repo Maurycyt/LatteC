@@ -1,12 +1,12 @@
 import frontend.checks.symbols.*
-import frontend.checks.types.LatteType.{TFunction, TInt}
+import frontend.checks.types.LatteType.{TClass, TFunction, TInt}
 import frontend.checks.types.StatementTypeChecker
 import frontend.parsing.ParseTreeGenerator
 import frontend.{FrontendError, Position}
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
 
-def exitWithError(message: String, status: Int = 1): Unit = {
+def exitWithError(message: String, status: Int = 42): Unit = {
 	if (message.nonEmpty) {
 		System.err.println(message)
 	}
@@ -19,7 +19,7 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 		// Get symbols
 		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
 		val topDefSymbols: SymTable = TopDefCollector.visitProgram(program)
-		given symbolStack: SymbolStack = topDefSymbols :: Nil
+		given symbolStack: SymbolStack = topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }} :: Nil
 		given classSymbols: ClassTable = ClassTableCollector.visitProgram(program)
 
 		// Check types and flow.

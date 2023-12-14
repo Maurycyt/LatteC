@@ -1,0 +1,4 @@
+int main () {
+    int [] arr = new int ["abc"];
+    return 0;
+}

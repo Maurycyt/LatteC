@@ -7,6 +7,9 @@ NC='\033[0m'
 TESTS_RUN=0
 TESTS_PASSED=0
 
+SUCCESS_STATUS=0
+FAILURE_STATUS=42
+
 runOn() {
   ./latc "$1" &> /dev/null
 }
@@ -28,19 +31,19 @@ runOnAllInDirectory () {
 }
 
 runOnGoodCore () {
-  runOnAllInDirectory "good/provided/core" 0
+  runOnAllInDirectory "good/provided/core" $SUCCESS_STATUS
 }
 
 runOnGoodExt () {
-  runOnAllInDirectory "good/provided/extensions/arrays1" 0
-  runOnAllInDirectory "good/provided/extensions/struct" 0
-  runOnAllInDirectory "good/provided/extensions/objects1" 0
-  runOnAllInDirectory "good/provided/extensions/objects2" 0
+  runOnAllInDirectory "good/provided/extensions/arrays1" $SUCCESS_STATUS
+  runOnAllInDirectory "good/provided/extensions/struct" $SUCCESS_STATUS
+  runOnAllInDirectory "good/provided/extensions/objects1" $SUCCESS_STATUS
+  runOnAllInDirectory "good/provided/extensions/objects2" $SUCCESS_STATUS
 }
 
 runOnBad () {
-  runOnAllInDirectory "bad/provided" 1
-  runOnAllInDirectory "bad/custom" 1
+  runOnAllInDirectory "bad/provided" $FAILURE_STATUS
+  runOnAllInDirectory "bad/custom" $FAILURE_STATUS
 }
 
 runOnGoodCore

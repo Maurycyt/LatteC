@@ -1,0 +1,11 @@
+class A {
+    int a;
+
+    void foo() {
+        self = new A;
+    }
+}
+
+int main () {
+    return 0;
+}
