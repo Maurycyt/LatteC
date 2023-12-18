@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Checks if an expression is type sound and returns its type.
  */
-class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
+class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[String], classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
 	import ClassTable.getClassOrThrow
 
 	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType]): LatteType = {
@@ -107,7 +107,7 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassT
 	override def visitEStr(ctx: LatteParser.EStrContext): LatteType = TStr
 
 	override def visitENew(ctx: LatteParser.ENewContext): LatteType = {
-		TypeCollector.visit(ctx.basicType) match {
+		TypeCollector().visit(ctx.basicType) match {
 			case classType @ TClass(className) =>
 				classTable.getClassOrThrow(className, Position.fromToken(ctx.basicType.start))
 				classType
@@ -116,7 +116,7 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classTable: ClassT
 	}
 
 	override def visitENewArr(ctx: LatteParser.ENewArrContext): LatteType = {
-		TypeCollector.visit(ctx.basicType) match {
+		TypeCollector().visit(ctx.basicType) match {
 			case classType @ TClass(className) =>
 				classTable.getClassOrThrow(className, Position.fromToken(ctx.basicType.start))
 				matchExprTypeWithExpected(ctx.expr, Seq(TInt))
@@ -156,7 +156,8 @@ class StatementTypeChecker(
 	currentClass: Option[TClass] = None
 )(using
 	private var symbolStack: SymbolStack,
-	private val classTable: ClassTable
+	classTable: ClassTable,
+	classNames: Set[String]
 ) extends LatteBaseVisitor[LatteStmtType] {
 	given Option[TClass] = currentClass
 
@@ -250,7 +251,7 @@ class StatementTypeChecker(
 	}
 
 	override def visitDecl(ctx: LatteParser.DeclContext): LatteStmtType = {
-		val itemType = TypeCollector.visit(ctx.anyType) match {
+		val itemType = TypeCollector().visit(ctx.anyType) match {
 			case t @ TClass(className) => classTable.getClassOrThrow(className, Position.fromToken(ctx.anyType.start)); t
 			case t @ TArray(TClass(className)) => classTable.getClassOrThrow(className, Position.fromToken(ctx.anyType.start)); t
 			case t => t
@@ -366,7 +367,7 @@ class StatementTypeChecker(
 
 	override def visitFor(ctx: LatteParser.ForContext): LatteStmtType = {
 		// Get the types of the expression, iterator variable and statement with extended scope
-		val iteratorType = TypeCollector.visit(ctx.basicType).asInstanceOf[TBasic]
+		val iteratorType = TypeCollector().visit(ctx.basicType).asInstanceOf[TBasic]
 		val iteratorName = ctx.ID.getText
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TArray(iteratorType)))
 		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorType))) {

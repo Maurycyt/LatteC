@@ -5,6 +5,7 @@ import frontend.checks.symbols
 import frontend.checks.types.LatteType
 import frontend.{FrontendError, Position}
 
+import scala.collection.immutable.HashSet
 import scala.collection.mutable
 
 // -------------------------------------
@@ -67,6 +68,8 @@ object SymTable {
 			case Some(symbolInfo) => symbolInfo
 			case None => throw SymbolNotFoundError(position, symbolName)
 		}
+		
+		def classNames: Set[String] = HashSet.from(symTable.collect { case (_, SymbolInfo(_, TClass(name))) => name })
 	}
 }
 

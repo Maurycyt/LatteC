@@ -4,6 +4,7 @@ import frontend.checks.symbols.ClassTable
 
 trait LatteType {
 	def isSubtypeOf(other: LatteType)(implicit classTable: ClassTable): Boolean = this == other
+	def isValid(using classNames: Set[String]): Boolean = true
 }
 
 object LatteType {
@@ -22,9 +23,13 @@ object LatteType {
 			}
 			case _ => false
 		}
+		override def isValid(using classNames: Set[String]): Boolean = classNames.contains(name)
 	}
 
-	case class TArray(underlying: TBasic) extends LatteType { override val toString: String = s"$underlying[]" }
+	case class TArray(underlying: TBasic) extends LatteType {
+		override val toString: String = s"$underlying[]"
+		override def isValid(using classNames: Set[String]): Boolean = underlying.isValid
+	}
 
 	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType {
 		override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result"
@@ -33,6 +38,7 @@ object LatteType {
 				args.size == otherArgs.size && args.zip(otherArgs).forall { (arg, otherArg) => otherArg.isSubtypeOf(arg) } && result.isSubtypeOf(otherResult)
 			case _ => false
 		}
+		override def isValid(using classNames: Set[String]): Boolean = args.forall(_.isValid) && result.isValid
 	}
 }
 

@@ -6,6 +6,8 @@ import frontend.{FrontendError, Position}
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
 
+import scala.collection.immutable.HashSet
+
 def exitWithError(message: String, status: Int = 42): Unit = {
 	if (message.nonEmpty) {
 		System.err.println(message)
@@ -15,12 +17,14 @@ def exitWithError(message: String, status: Int = 42): Unit = {
 
 @main
 def main(inputFileString: String, debug: Boolean): Unit = {
+	import SymTable.classNames
 	try {
 		// Get symbols
 		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
-		val topDefSymbols: SymTable = TopDefCollector.visitProgram(program)
+		val topDefSymbols: SymTable = TopDefCollector(using Set.empty).visitProgram(program)
+		given classNames: Set[String] = topDefSymbols.classNames
 		given symbolStack: SymbolStack = topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }} :: Nil
-		given classSymbols: ClassTable = ClassTableCollector.visitProgram(program)
+		given classSymbols: ClassTable = ClassTableCollector().visitProgram(program)
 
 		// Check types and flow.
 		StatementTypeChecker().visitProgram(program)

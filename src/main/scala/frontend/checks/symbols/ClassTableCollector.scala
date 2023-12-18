@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Collects information about the members of classes for the purpose of future lookup.
  */
-object ClassTableCollector extends LatteBaseVisitor[ClassTable] {
+class ClassTableCollector()(using classNames: Set[String]) extends LatteBaseVisitor[ClassTable] {
 	override def defaultResult: ClassTable = ClassTable.empty
 	override def aggregateResult(aggregate: ClassTable, nextResult: ClassTable): ClassTable = aggregate.addAll(nextResult)
 
@@ -47,7 +47,6 @@ object ClassTableCollector extends LatteBaseVisitor[ClassTable] {
 						if !hierarchyTable.contains(parentClass) then
 							throw new FrontendError {
 								override def position: Position = Position.fromToken(hierarchyTable(targetClass)._1.ID(1).getSymbol)
-
 								override def message: String = s"Class $parentClass does not exist."
 							}
 						collectForClass(parentClass)
@@ -57,7 +56,7 @@ object ClassTableCollector extends LatteBaseVisitor[ClassTable] {
 				// Now, join the members.
 				hierarchyTable(targetClass)._1.memberDef.asScala.foreach { memberDef =>
 					// If the member is a function and it already appears in the parent, then it must be replaced.
-					MemberDefCollector.visit(memberDef).foreach {
+					MemberDefCollector().visit(memberDef).foreach {
 						case (symbolName, symbolInfo@SymbolInfo(_, t)) => t match {
 							case fType: TFunction =>
 								val previousType: Option[LatteType] = resultTable(targetClass)._1.get(symbolName).map(_.symbolType)
