@@ -12,7 +12,7 @@
 The Latte language is a simple Java-like language. The ANTLR syntax of Latte is detailed in [Latte.cf](src/main/resources/Latte.g4). Examples of Latte programs can be found in [the test resources folder](src/test/resources) in `good` and `extensions`.
 
 The core features of Latte include:
-- Integer, floating point, boolean and string constants and variables.
+- Integer, boolean and string constants and variables.
 - One-dimensional arrays.
 - Conditional statements and loops.
 - Data structuration via classes with member variables and member functions.
