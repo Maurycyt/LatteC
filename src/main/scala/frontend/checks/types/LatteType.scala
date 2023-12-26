@@ -1,9 +1,9 @@
 package frontend.checks.types
 
-import frontend.checks.symbols.ClassTable
+import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 
-trait LatteType {
-	def isSubtypeOf(other: LatteType)(implicit classTable: ClassTable): Boolean = this == other
+sealed trait LatteType {
+	def isSubtypeOf(other: LatteType)(using inheritanceTable: HierarchyTable): Boolean = this == other
 	def isValid(using classNames: Set[String]): Boolean = true
 }
 
@@ -16,8 +16,8 @@ object LatteType {
 	case object TVoid extends TBasic { override val toString: String = "void" }
 	case class TClass(name: String) extends TBasic {
 		override val toString: String = s"$name"
-		override def isSubtypeOf(other: LatteType)(using classTable: ClassTable): Boolean = other match {
-			case TClass(otherClass) => if name == otherClass then true else classTable(name)._2 match {
+		override def isSubtypeOf(other: LatteType)(using inheritanceTable: HierarchyTable): Boolean = other match {
+			case TClass(otherClass) => if name == otherClass then true else inheritanceTable(name).parent match {
 				case None => false
 				case Some(parentClass) => TClass(parentClass).isSubtypeOf(other)
 			}
@@ -33,7 +33,7 @@ object LatteType {
 
 	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType {
 		override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result"
-		override def isSubtypeOf(other: LatteType)(implicit classTable: ClassTable): Boolean = other match {
+		override def isSubtypeOf(other: LatteType)(using hierarchyTable: HierarchyTable): Boolean = other match {
 			case TFunction(otherArgs, otherResult) =>
 				args.size == otherArgs.size && args.zip(otherArgs).forall { (arg, otherArg) => otherArg.isSubtypeOf(arg) } && result.isSubtypeOf(otherResult)
 			case _ => false

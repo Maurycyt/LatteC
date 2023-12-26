@@ -2,6 +2,7 @@ package frontend.checks.types
 
 import frontend.{FrontendError, Position}
 import frontend.checks.symbols.*
+import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 import frontend.checks.types.LatteStmtType.*
 import frontend.checks.types.LatteType.*
 import grammar.{LatteBaseVisitor, LatteParser}
@@ -14,7 +15,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Checks if an expression is type sound and returns its type.
  */
-class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[String], classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
+class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
 	import ClassTable.getClassOrThrow
 
 	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType]): LatteType = {
@@ -78,7 +79,7 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[St
 	override def visitVMem(ctx: LatteParser.VMemContext): LatteType = {
 		import ClassTable.getOrThrow
 		visit(ctx.value) match {
-			case TClass(className) => classTable.getOrThrow(className, ctx.ID.getText, Position.fromToken(ctx.ID.getSymbol)).symbolType
+			case TClass(className) => classTable.getOrThrow(className, ctx.ID.getText, Position.fromToken(ctx.ID.getSymbol)).symbolInfo.symbolType
 			case TArray(_) if ctx.ID.getText == "length" => TInt
 			case nonClassType => throw ExprTypeMismatchError(ctx.value, Seq(TClass("<class>")), nonClassType)
 		}
@@ -156,17 +157,13 @@ class StatementTypeChecker(
 	currentClass: Option[TClass] = None
 )(using
 	private var symbolStack: SymbolStack,
+	inheritanceTable: HierarchyTable,
 	classTable: ClassTable,
 	classNames: Set[String]
 ) extends LatteBaseVisitor[LatteStmtType] {
 	given Option[TClass] = currentClass
 
-	private case class UnreachableCodeError(position: Position) extends FrontendError {
-		override def message: String = s"Unreachable code."
-	}
-
-	import ClassTable.getClassOrThrow
-	import SymbolStack.getOrThrow
+	import ClassTable.getClassOrThrow, SymbolStack.getOrThrow
 
 	private def withNewScopeDo(newScope: SymTable = SymTable.empty)(f : => LatteStmtType): LatteStmtType = {
 		symbolStack = newScope :: symbolStack
@@ -183,7 +180,7 @@ class StatementTypeChecker(
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteStmtType = {
 		val className = ctx.ID(0).getText
 		val stmtCheckerInClass = StatementTypeChecker(currentExpectedReturnType, Some(TClass(className)))
-		stmtCheckerInClass.withNewScopeDo(classTable(className)._1) {
+		stmtCheckerInClass.withNewScopeDo(classTable(className).memberTable.asSymTable) {
 			ctx.memberDef.asScala.filter { _.isInstanceOf[MFunContext] } .foreach(stmtCheckerInClass.visit)
 			Ignored
 		}

@@ -5,10 +5,13 @@ MAIN_ARGS= # To be supplied by the calling script
 
 ARCHIVE_NAME=mw429680
 
+all: ${MAIN_CLASSPATH}main.built
+
 ${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala")
 	make build
-	echo "#!/bin/bash\nscala ${INCLUDE_CLASSPATH}" 'main "$$1" false' > latc
-	cat latc > latc_llvm
+	echo -n '#!/bin/bash\n\nDEBUG=false\nif [ "$$2" = "--debug" ]\nthen\n\tDEBUG=true\nfi\n\n' > latc
+	echo "scala ${INCLUDE_CLASSPATH}" 'main "$$1" "$$DEBUG"' >> latc
+	cp latc latc_llvm
 	chmod +x latc latc_llvm
 	touch $@
 

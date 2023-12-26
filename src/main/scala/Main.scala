@@ -1,12 +1,11 @@
+import frontend.{FrontendError, Position}
 import frontend.checks.symbols.*
+import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 import frontend.checks.types.LatteType.{TClass, TFunction, TInt}
 import frontend.checks.types.StatementTypeChecker
 import frontend.parsing.ParseTreeGenerator
-import frontend.{FrontendError, Position}
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
-
-import scala.collection.immutable.HashSet
 
 def exitWithError(message: String, status: Int = 42): Unit = {
 	if (message.nonEmpty) {
@@ -22,9 +21,12 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 		// Get symbols
 		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
 		val topDefSymbols: SymTable = TopDefCollector(using Set.empty).visitProgram(program)
-		given classNames: Set[String] = topDefSymbols.classNames
+		given definedClassNames: Set[String] = topDefSymbols.classNames
 		given symbolStack: SymbolStack = topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }} :: Nil
-		given classSymbols: ClassTable = ClassTableCollector().visitProgram(program)
+		given hierarchyTable: HierarchyTable = ClassHierarchyCollector.visitProgram(program)
+		given classTable: ClassTable = ClassTableCollector().visitProgram(program)
+
+		if debug then println(s"Collected Class Table:\n$classTable")
 
 		// Check types and flow.
 		StatementTypeChecker().visitProgram(program)

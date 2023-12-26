@@ -1,8 +1,9 @@
 package frontend.checks.symbols
 
 import frontend.checks.symbols
-import frontend.checks.types.{LatteType, TypeCollector, UnknownTypeError}
+import frontend.checks.types.{LatteType, TypeCollector}
 import frontend.Position
+import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 import grammar.{LatteBaseVisitor, LatteParser}
 import org.antlr.v4.runtime.tree.TerminalNode
 

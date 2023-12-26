@@ -7,25 +7,27 @@ import scala.collection.mutable
 /**
  * Collects information about how classes inherit after other classes.
  */
-object ClassHierarchyCollector extends LatteBaseVisitor[ClassHierarchyCollector.InheritanceTable] {
-	override val defaultResult: InheritanceTable = InheritanceTable.empty
-	override def aggregateResult(aggregate: InheritanceTable, nextResult: InheritanceTable): InheritanceTable = aggregate.addAll(nextResult)
+object ClassHierarchyCollector extends LatteBaseVisitor[ClassHierarchyCollector.HierarchyTable] {
+	override val defaultResult: HierarchyTable = HierarchyTable.empty
+	override def aggregateResult(aggregate: HierarchyTable, nextResult: HierarchyTable): HierarchyTable = aggregate.addAll(nextResult)
 
-	override def visitDFun(ctx: LatteParser.DFunContext): InheritanceTable = defaultResult
+	override def visitDFun(ctx: LatteParser.DFunContext): HierarchyTable = defaultResult
 
-	override def visitClassDef(ctx: LatteParser.ClassDefContext): InheritanceTable = {
+	override def visitClassDef(ctx: LatteParser.ClassDefContext): HierarchyTable = {
 		val name = ctx.ID(0).getText
 		if ctx.ID.size > 1 then
 			val parentName = ctx.ID(1).getText
-			InheritanceTable(name -> (ctx, Some(parentName)))
+			HierarchyTable(name -> HierarchyTableEntry(ctx, Some(parentName)))
 		else
-			InheritanceTable(name -> (ctx, None))
+			HierarchyTable(name -> HierarchyTableEntry(ctx, None))
 	}
 
-	private type InheritanceTable = mutable.HashMap[String, (LatteParser.ClassDefContext, Option[String])]
+	case class HierarchyTableEntry(defContext: LatteParser.ClassDefContext, parent: Option[String])
+	
+	type HierarchyTable = mutable.HashMap[String, HierarchyTableEntry]
 
-	private object InheritanceTable {
-		def empty: InheritanceTable = apply()
-		def apply(inits: (String, (LatteParser.ClassDefContext, Option[String]))*): InheritanceTable = mutable.HashMap.from(inits)
+	object HierarchyTable {
+		def empty: HierarchyTable = mutable.HashMap.empty
+		def apply(inits: (String, HierarchyTableEntry)*): HierarchyTable = mutable.HashMap.from(inits)
 	}
 }

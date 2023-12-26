@@ -1,6 +1,6 @@
 package frontend.checks.types
 
-import LatteType.*
+import frontend.checks.types.LatteType.*
 import frontend.Position
 import grammar.{LatteBaseVisitor, LatteParser}
 
@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Gets the type of a type specifier.
  */
-class TypeCollector(using classNames: Set[String]) extends LatteBaseVisitor[LatteType] {
+class TypeCollector(using classNames: Set[String] = Set.empty) extends LatteBaseVisitor[LatteType] {
 	override def visitTInt(ctx: LatteParser.TIntContext): LatteType = TInt
 	override def visitTStr(ctx: LatteParser.TStrContext): LatteType = TStr
 	override def visitTBool(ctx: LatteParser.TBoolContext): LatteType = TBool
