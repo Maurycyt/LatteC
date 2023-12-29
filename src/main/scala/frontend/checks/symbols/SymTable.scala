@@ -29,7 +29,7 @@ case class RetypingError(position: Position, name: String, thisType: LatteType, 
 // |          Symbol Table             |
 // -------------------------------------
 
-case class SymbolInfo(declarationPosition: Position, symbolType: LatteType)
+case class SymbolInfo(declarationPosition: Position, symbolName: String, symbolType: LatteType, hostClass: Option[String] = None)
 
 type SymTable = mutable.HashMap[String, SymbolInfo]
 
@@ -48,7 +48,7 @@ object SymTable {
 		"error" -> TFunction(Seq.empty, TVoid),
 		"readInt" -> TFunction(Seq.empty, TInt),
 		"readString" -> TFunction(Seq.empty, TStr)
-	).map { (name, symbolType) => (name, symbols.SymbolInfo(Position.predefined, symbolType)) }
+	).map { (name, symbolType) => (name, SymbolInfo(Position.predefined, name, symbolType)) }
 
 	def withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
 
@@ -74,7 +74,7 @@ object SymTable {
 			case None => throw SymbolNotFoundError(position, symbolName)
 		}
 
-		def classNames: Set[String] = HashSet.from(symTable.collect { case (_, SymbolInfo(_, TClass(name))) => name })
+		def classNames: Set[String] = HashSet.from(symTable.collect { case (_, SymbolInfo(_, _, TClass(name), _)) => name })
 	}
 }
 
@@ -84,8 +84,10 @@ object SymTable {
 
 case class MemberInfo(index: Int, symbolInfo: SymbolInfo)
 
+given memberInfoOrdering: Ordering[MemberInfo] = (x: MemberInfo, y: MemberInfo) => x.index - y.index
+
 class MemberTable(private var data: mutable.HashMap[String, MemberInfo] = mutable.HashMap.empty) {
-	private var memberFunctions: Int = data.count { case (_, MemberInfo(_, SymbolInfo(_, symbolType))) => symbolType match { case _: TFunction => true; case _ => false } }
+	private var memberFunctions: Int = data.count { case (_, MemberInfo(_, SymbolInfo(_, _, symbolType, _))) => symbolType match { case _: TFunction => true; case _ => false } }
 	private var memberVariables: Int = data.size - memberFunctions
 
 	def apply: String => MemberInfo = data.apply
@@ -108,7 +110,8 @@ class MemberTable(private var data: mutable.HashMap[String, MemberInfo] = mutabl
 				if (data.contains(symbolName)) {
 					throw RedeclarationError(symbolInfo.declarationPosition, symbolName, data(symbolName).symbolInfo.declarationPosition)
 				}
-				data += symbolName -> MemberInfo(memberVariables, symbolInfo)
+				// We give variables indices starting at 1 because in a user-defined class, the vtable pointer appears first in the structure.
+				data += symbolName -> MemberInfo(memberVariables + 1, symbolInfo)
 				memberVariables += 1
 		}
 		this
@@ -122,6 +125,11 @@ class MemberTable(private var data: mutable.HashMap[String, MemberInfo] = mutabl
 	}
 
 	def asSymTable: SymTable = data.map { case (symbolName, memberInfo) => symbolName -> memberInfo.symbolInfo }
+
+	// Sorted list of methods in order of definition in the hierarchy.
+	def methods: Seq[MemberInfo] = data.values.filter { case MemberInfo(_, SymbolInfo(_, _, TFunction(_, _), _)) => true; case _ => false }.toSeq.sorted
+	// Sorted list of fields in order of definition in the hierarchy.
+	def fields: Seq[MemberInfo] = data.values.filterNot { case MemberInfo(_, SymbolInfo(_, _, TFunction(_, _), _)) => true; case _ => false }.toSeq.sorted
 
 	override def toString: String = s"MemberTable($memberVariables,$memberFunctions,$data)"
 }

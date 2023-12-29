@@ -52,7 +52,7 @@ class ClassTableCollector()(using hierarchyTable: HierarchyTable) extends LatteB
 				// Now, join the members.
 				hierarchyTable(targetClass).defContext.memberDef.asScala.foreach { memberDef =>
 					// If the member is a function and it already appears in the parent, then it must be replaced.
-					MemberDefCollector().visit(memberDef).foreach {
+					MemberDefCollector(targetClass).visit(memberDef).foreach {
 						case (symbolName, symbolInfo) => resultTable(targetClass).memberTable.combineWith(symbolName, symbolInfo)
 					}
 				}

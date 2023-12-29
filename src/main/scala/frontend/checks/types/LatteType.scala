@@ -1,20 +1,43 @@
 package frontend.checks.types
 
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
+import backend.generation.NamingConvention.structType
 
 sealed trait LatteType {
+	/**
+	 * Checks if this type is a subtype of the other type in the context given by the inheritance table.
+	 */
 	def isSubtypeOf(other: LatteType)(using inheritanceTable: HierarchyTable): Boolean = this == other
+
+	/**
+	 * Checks if the type is valid in the context given by known class names.
+	 */
 	def isValid(using classNames: Set[String]): Boolean = true
+
+	/**
+	 * Returns the type name as expected in the generated LLVM code.
+	 * For classes and functions it returns their type with a pointer, because these full types are almost always referenced with a pointer.
+	 */
+	def toLLVM: String = toLLVMNoPointer
+
+	/**
+	 * Same as [[toLLVM]], but does not append the pointer asterisk for classes and functions.
+	 */
+	def toLLVMNoPointer: String
 }
 
 object LatteType {
-	sealed trait TBasic extends LatteType // { def size: Int }
+	sealed trait TNonFun extends LatteType
 
-	case object TInt extends TBasic { override val toString: String = "int" }
-	case object TStr extends TBasic { override val toString: String = "str" }
-	case object TBool extends TBasic { override val toString: String = "bool" }
-	case object TVoid extends TBasic { override val toString: String = "void" }
-	case class TClass(name: String) extends TBasic {
+	case object TInt extends TNonFun { override val toString: String = "int"; override val toLLVMNoPointer: String = "i64" }
+	case object TStr extends TNonFun {
+		override val toString: String = "string"
+		override val toLLVMNoPointer: String = structType("string")
+		override val toLLVM: String = s"$toLLVMNoPointer*"
+	}
+	case object TBool extends TNonFun { override val toString: String = "bool"; override val toLLVMNoPointer: String = "i1" }
+	case object TVoid extends TNonFun { override val toString: String = "void"; override val toLLVMNoPointer: String = "void" }
+	case class TClass(name: String) extends TNonFun {
 		override val toString: String = s"$name"
 		override def isSubtypeOf(other: LatteType)(using inheritanceTable: HierarchyTable): Boolean = other match {
 			case TClass(otherClass) => if name == otherClass then true else inheritanceTable(name).parent match {
@@ -24,11 +47,14 @@ object LatteType {
 			case _ => false
 		}
 		override def isValid(using classNames: Set[String]): Boolean = classNames.contains(name)
+		override val toLLVMNoPointer: String = structType(name)
+		override val toLLVM: String = s"$toLLVMNoPointer*"
 	}
 
-	case class TArray(underlying: TBasic) extends LatteType {
+	case class TArray(underlying: TNonFun) extends LatteType {
 		override val toString: String = s"$underlying[]"
 		override def isValid(using classNames: Set[String]): Boolean = underlying.isValid
+		override val toLLVMNoPointer: String = s"${underlying.toLLVM}*"
 	}
 
 	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType {
@@ -39,7 +65,9 @@ object LatteType {
 			case _ => false
 		}
 		override def isValid(using classNames: Set[String]): Boolean = args.forall(_.isValid) && result.isValid
-	}
+		override val toLLVMNoPointer: String = args.map(_.toLLVM).mkString(s"${result.toLLVM}(", ",", ")")
+		override val toLLVM: String = s"$toLLVMNoPointer*"
+	}	
 }
 
 sealed trait LatteStmtType {
@@ -58,6 +86,6 @@ object LatteStmtType {
 
 	case object Ignored extends DoesNotReturn
 	case object Loops extends DoesNotReturn with BreaksFlow
-	case class MightReturn(latteType: LatteType) extends CanReturn
+	private case class MightReturn(latteType: LatteType) extends CanReturn
 	case class MustReturn(latteType: LatteType) extends CanReturn with BreaksFlow
 }

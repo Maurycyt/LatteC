@@ -22,7 +22,7 @@ class TypeCollector(using classNames: Set[String] = Set.empty) extends LatteBase
 		else throw UnknownTypeError(Position.fromToken(ctx.start), TClass(name))
 	}
 
-	override def visitTArr(ctx: LatteParser.TArrContext): LatteType = TArray(visit(ctx.basicType).asInstanceOf[TBasic])
+	override def visitTArr(ctx: LatteParser.TArrContext): LatteType = TArray(visit(ctx.basicType).asInstanceOf[TNonFun])
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteType = TClass(ctx.ID(0).getText)
 

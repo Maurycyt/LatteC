@@ -95,7 +95,7 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[St
 	}
 
 	override def visitEInt(ctx: LatteParser.EIntContext): LatteType = {
-		ctx.getText.toIntOption match {
+		ctx.getText.toLongOption match {
 			case None => throw new FrontendError {
 				override def position: Position = Position.fromToken(ctx.start)
 				override def message: String = s"Literal ${ctx.getText} is out of range of the integer type."
@@ -122,9 +122,9 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[St
 				classTable.getClassOrThrow(className, Position.fromToken(ctx.basicType.start))
 				matchExprTypeWithExpected(ctx.expr, Seq(TInt))
 				TArray(classType)
-			case basic: TBasic =>
+			case nonFun: TNonFun =>
 				matchExprTypeWithExpected(ctx.expr, Seq(TInt))
-				TArray(basic)
+				TArray(nonFun)
 			case other => throw ExprTypeMismatchError(ctx, Seq(TClass("<non array>")), other)
 		}
 	}
@@ -195,7 +195,8 @@ class StatementTypeChecker(
 			if argTypes.isEmpty
 			then SymTable.empty
 			else SymTable(argTypes.zipWithIndex.map { (argType, i) =>
-				ctx.args.ID(i).getText -> SymbolInfo(Position.fromToken(ctx.args.ID(i).getSymbol), argType)
+				val argName: String = ctx.args.ID(i).getText
+				argName -> SymbolInfo(Position.fromToken(ctx.args.ID(i).getSymbol), argName, argType)
 			}:_*)
 
 		// Get the statement type with extended scope.
@@ -255,8 +256,9 @@ class StatementTypeChecker(
 		}
 		ctx.item.asScala.foreach { itemCtx =>
 			val itemSymbol = itemCtx.ID.getSymbol
+			val itemName = itemSymbol.getText
 			if (itemCtx.expr != null) ExpressionTypeChecker().matchExprTypeWithExpected(itemCtx.expr, Seq(itemType))
-			addSymbol(itemSymbol.getText, SymbolInfo(Position.fromToken(itemSymbol), itemType))
+			addSymbol(itemName, SymbolInfo(Position.fromToken(itemSymbol), itemName, itemType))
 		}
 		Ignored
 	}
@@ -364,10 +366,10 @@ class StatementTypeChecker(
 
 	override def visitFor(ctx: LatteParser.ForContext): LatteStmtType = {
 		// Get the types of the expression, iterator variable and statement with extended scope
-		val iteratorType = TypeCollector().visit(ctx.basicType).asInstanceOf[TBasic]
+		val iteratorType = TypeCollector().visit(ctx.basicType).asInstanceOf[TNonFun]
 		val iteratorName = ctx.ID.getText
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TArray(iteratorType)))
-		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorType))) {
+		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorName, iteratorType))) {
 			withNewScopeDo() { visit(ctx.stmt) }
 		}
 

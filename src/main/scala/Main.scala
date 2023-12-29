@@ -1,3 +1,4 @@
+import backend.generation.ClassRepresentationBuilder
 import frontend.{FrontendError, Position}
 import frontend.checks.symbols.*
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
@@ -30,6 +31,13 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 
 		// Check types and flow.
 		StatementTypeChecker().visitProgram(program)
+
+		given sb: StringBuilder = StringBuilder()
+
+		// Generate class definitions.
+		ClassRepresentationBuilder.buildClasses
+
+		println(sb.result)
 
 		// Check if int main() is defined.
 		{
