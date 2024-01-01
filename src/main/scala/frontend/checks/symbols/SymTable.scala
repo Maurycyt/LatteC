@@ -158,11 +158,9 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
 						memberFunctions += 1
 					case Some(previousType) =>
 						if fType.isSubtypeOf(previousType) then
-							data += (
-								symbolName,
-								data(symbolName)
-									.copy(declarationPosition = symbolInfo.declarationPosition, symbolName = symbolInfo.symbolName, symbolType = symbolInfo.symbolType)
-							)
+							data +=
+								symbolName ->
+								data(symbolName).copy(declarationPosition = symbolInfo.declarationPosition, symbolName = symbolInfo.symbolName, symbolType = symbolInfo.symbolType)
 						else
 							throw RetypingError(symbolInfo.declarationPosition, symbolName, symbolInfo.symbolType, previousType, previousPosition = data(symbolName).declarationPosition)
 				}
@@ -190,6 +188,9 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
 	def methods: Seq[MemberInfo] = data.values.filter { case MemberInfo(_, _, TFunction(_, _), _, _) => true; case _ => false }.toSeq.sorted
 	// Sorted list of fields in order of definition in the hierarchy.
 	def fields: Seq[MemberInfo] = data.values.filterNot { case MemberInfo(_, _, TFunction(_, _), _, _) => true; case _ => false }.toSeq.sorted
+
+	def numFunctions: Int = memberFunctions
+	def numVariables: Int = memberVariables
 
 	override def toString: String = s"MemberTable($memberVariables,$memberFunctions,$data)"
 }
@@ -243,11 +244,17 @@ object ClassTable {
 class SymbolStack[Info <: SymbolInterface](inits: mutable.HashMap[String, Info]*) {
 	private type Table = mutable.HashMap[String, Info]
 	private var symTables: List[Table] = if inits.nonEmpty then List.from(inits) else mutable.HashMap.empty :: Nil
-	private val symCounts: mutable.HashMap[String, Int] = mutable.HashMap.empty
+	private var symCounts: mutable.HashMap[String, Int] = mutable.HashMap.empty
 
 	inits.foreach { _.keys.foreach { symbolName =>
 		symCounts.updateWith(symbolName) { case None => Some(1); case Some(c) => Some(c + 1) }
 	}}
+
+	private def this(newSymTables: List[mutable.HashMap[String, Info]], newSymCounts: mutable.HashMap[String, Int]) = {
+		this()
+		symTables = newSymTables
+		symCounts = mutable.HashMap.from(newSymCounts)
+	}
 
 	def add(symbolInfo: Info): Unit = {
 		import SymbolTableExtension.combineWith
@@ -271,6 +278,10 @@ class SymbolStack[Info <: SymbolInterface](inits: mutable.HashMap[String, Info]*
 	}
 
 	def getOrThrow(symbolName: String, position: Position): Info = getOrThrow(symTables, symbolName, position)
+
+	def withNewScope(scope: Table = mutable.HashMap.empty): SymbolStack[Info] = {
+		SymbolStack[Info](scope :: symTables, symCounts)
+	}
 
 	def addScope(scope: Table = mutable.HashMap.empty): Unit = {
 		symTables = scope :: symTables

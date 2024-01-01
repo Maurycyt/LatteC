@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Collects information about the members of classes for the purpose of future lookup.
  */
-class ClassTableCollector()(using hierarchyTable: HierarchyTable) extends LatteBaseVisitor[ClassTable] {
+class ClassTableCollector(using hierarchyTable: HierarchyTable) extends LatteBaseVisitor[ClassTable] {
 	override def defaultResult: ClassTable = ClassTable.empty
 	override def aggregateResult(aggregate: ClassTable, nextResult: ClassTable): ClassTable = aggregate.addAll(nextResult)
 

@@ -15,7 +15,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Checks if an expression is type sound and returns its type.
  */
-class ExpressionTypeChecker()(using symbolStack: SymbolStack[SymbolInfo], classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
+class ExpressionTypeChecker(using symbolStack: SymbolStack[SymbolInfo], classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
 	import ClassTable.getClassOrThrow
 
 	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType]): LatteType = {
@@ -246,7 +246,7 @@ class StatementTypeChecker(
 		}
 	}
 
-	override def visitDecl(ctx: LatteParser.DeclContext): LatteStmtType = {
+	override def visitSDecl(ctx: LatteParser.SDeclContext): LatteStmtType = {
 		val itemType = TypeCollector().visit(ctx.anyType) match {
 			case t @ TClass(className) => classTable.getClassOrThrow(className, Position.fromToken(ctx.anyType.start)); t
 			case t @ TArray(TClass(className)) => classTable.getClassOrThrow(className, Position.fromToken(ctx.anyType.start)); t
@@ -261,7 +261,7 @@ class StatementTypeChecker(
 		Ignored
 	}
 
-	override def visitAss(ctx: LatteParser.AssContext): LatteStmtType = {
+	override def visitSAss(ctx: LatteParser.SAssContext): LatteStmtType = {
 		if ctx.value().getText == "self" then
 			throw new FrontendError {
 				override def position: Position = Position.fromToken(ctx.value.start)
@@ -272,17 +272,17 @@ class StatementTypeChecker(
 		Ignored
 	}
 
-	override def visitIncr(ctx: LatteParser.IncrContext): LatteStmtType = {
+	override def visitSIncr(ctx: LatteParser.SIncrContext): LatteStmtType = {
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.value, Seq(TInt))
 		Ignored
 	}
 
-	override def visitDecr(ctx: LatteParser.DecrContext): LatteStmtType = {
+	override def visitSDecr(ctx: LatteParser.SDecrContext): LatteStmtType = {
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.value, Seq(TInt))
 		Ignored
 	}
 
-	override def visitRetValue(ctx: LatteParser.RetValueContext): LatteStmtType = currentExpectedReturnType match {
+	override def visitSRetValue(ctx: LatteParser.SRetValueContext): LatteStmtType = currentExpectedReturnType match {
 		case None => throw new Error("No expected return type at return statement. This error should not appear.")
 		case Some(expected) =>
 			ExpressionTypeChecker().visit(ctx.expr) match {
@@ -291,13 +291,13 @@ class StatementTypeChecker(
 			}
 	}
 
-	override def visitRetVoid(ctx: LatteParser.RetVoidContext): LatteStmtType = currentExpectedReturnType match {
+	override def visitSRetVoid(ctx: LatteParser.SRetVoidContext): LatteStmtType = currentExpectedReturnType match {
 		case None => throw new Error("No expected return type at return statement. This error should not appear.")
 		case Some(TVoid) => MustReturn(TVoid)
 		case Some(expected) => throw StmtTypeMismatchError(ctx, expected, TVoid)
 	}
 
-	override def visitCond(ctx: LatteParser.CondContext): LatteStmtType = {
+	override def visitSCond(ctx: LatteParser.SCondContext): LatteStmtType = {
 		// Get the types of the expression and statement
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
 		val stmtType = withNewScopeDo() { visit(ctx.stmt) }
@@ -316,7 +316,7 @@ class StatementTypeChecker(
 		}
 	}
 
-	override def visitCondElse(ctx: LatteParser.CondElseContext): LatteStmtType = {
+	override def visitSCondElse(ctx: LatteParser.SCondElseContext): LatteStmtType = {
 		// Get the types of the expression and statements
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
 		val stmtTrueType = withNewScopeDo() { visit(ctx.stmt(0)) }
@@ -345,7 +345,7 @@ class StatementTypeChecker(
 		}
 	}
 
-	override def visitWhile(ctx: LatteParser.WhileContext): LatteStmtType = {
+	override def visitSWhile(ctx: LatteParser.SWhileContext): LatteStmtType = {
 		// Get the types of the expression and statement
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TBool))
 		val stmtType = withNewScopeDo() { visit(ctx.stmt) }
@@ -362,7 +362,7 @@ class StatementTypeChecker(
 		}
 	}
 
-	override def visitFor(ctx: LatteParser.ForContext): LatteStmtType = {
+	override def visitSFor(ctx: LatteParser.SForContext): LatteStmtType = {
 		// Get the types of the expression, iterator variable and statement with extended scope
 		val iteratorType = TypeCollector().visit(ctx.basicType).asInstanceOf[TNonFun]
 		val iteratorName = ctx.ID.getText

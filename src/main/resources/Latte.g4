@@ -41,17 +41,17 @@ block
 
 stmt
     : ';'                                       # SEmpty
-    | block                                     # BlockStmt
-    | anyType item ( ',' item )* ';'            # Decl
-    | value '=' expr ';'                        # Ass
-    | value '++' ';'                            # Incr
-    | value '--' ';'                            # Decr
-    | 'return' expr ';'                         # RetValue
-    | 'return' ';'                              # RetVoid
-    | 'if' '(' expr ')' stmt                    # Cond
-    | 'if' '(' expr ')' stmt 'else' stmt        # CondElse
-    | 'while' '(' expr ')' stmt                 # While
-    | 'for' '(' basicType ID ':' expr ')' stmt  # For
+    | block                                     # SBlock
+    | anyType item ( ',' item )* ';'            # SDecl
+    | value '=' expr ';'                        # SAss
+    | value '++' ';'                            # SIncr
+    | value '--' ';'                            # SDecr
+    | 'return' expr ';'                         # SRetValue
+    | 'return' ';'                              # SRetVoid
+    | 'if' '(' expr ')' stmt                    # SCond
+    | 'if' '(' expr ')' stmt 'else' stmt        # SCondElse
+    | 'while' '(' expr ')' stmt                 # SWhile
+    | 'for' '(' basicType ID ':' expr ')' stmt  # SFor
     | expr ';'                                  # SExp
     ;
 
