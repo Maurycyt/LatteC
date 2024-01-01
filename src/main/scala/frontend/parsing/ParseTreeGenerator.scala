@@ -6,8 +6,8 @@ import org.antlr.v4.runtime.{CharStreams, CommonTokenStream, DiagnosticErrorList
 import org.antlr.v4.runtime.atn.ATNConfigSet
 import org.antlr.v4.runtime.dfa.DFA
 
+import java.nio.file.Path
 import scala.jdk.CollectionConverters.*
-
 import java.util
 
 object ParseTreeGenerator {
@@ -25,9 +25,9 @@ object ParseTreeGenerator {
 		}
 	}
 
-	def getParseTree(filePathString: String): LatteParser.ProgramContext = {
+	def getParseTree(filePath: Path): LatteParser.ProgramContext = {
 		try {
-			val inputStream = CharStreams.fromFileName(filePathString)
+			val inputStream = CharStreams.fromPath(filePath)
 			val latteLexer = new LatteLexer(inputStream)
 			val latteParser = new LatteParser(new CommonTokenStream(latteLexer))
 			latteLexer.removeErrorListeners()

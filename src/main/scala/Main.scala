@@ -7,6 +7,10 @@ import frontend.checks.types.StatementTypeChecker
 import frontend.parsing.ParseTreeGenerator
 import grammar.LatteParser
 import grammar.LatteParser.ProgramContext
+import org.apache.commons.io.FilenameUtils
+
+import java.io.FileWriter
+import java.nio.file.Path
 
 def exitWithError(message: String, status: Int = 42): Unit = {
 	if (message.nonEmpty) {
@@ -16,32 +20,33 @@ def exitWithError(message: String, status: Int = 42): Unit = {
 }
 
 @main
-def main(inputFileString: String, debug: Boolean): Unit = {
+def main(inputFileString: String, debugFlag: Boolean): Unit = {
+	debug.flag = debugFlag
+	val inputFilePath: Path = Path.of(inputFileString).toAbsolutePath
+
 	import SymTable.classNames
 	try {
+
+		/***********
+		| FRONTEND |
+		***********/
+
 		// Get symbols
-		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFileString)
+		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFilePath)
 		val topDefSymbols: SymTable = TopDefCollector(using Set.empty).visitProgram(program)
 		given definedClassNames: Set[String] = topDefSymbols.classNames
-		given symbolStack: SymbolStack = topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }} :: Nil
+		given symbolStack: SymbolStack[SymbolInfo] = SymbolStack(topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }})
 		given hierarchyTable: HierarchyTable = ClassHierarchyCollector.visitProgram(program)
 		given classTable: ClassTable = ClassTableCollector().visitProgram(program)
 
-		if debug then println(s"Collected Class Table:\n$classTable")
+		if debug.flag then println(s"Collected Class Table:\n$classTable")
 
 		// Check types and flow.
 		StatementTypeChecker().visitProgram(program)
 
-		given sb: StringBuilder = StringBuilder()
-
-		// Generate class definitions.
-		ClassRepresentationBuilder.buildClasses
-
-		println(sb.result)
-
 		// Check if int main() is defined.
 		{
-			import SymTable.getOrThrow
+			import SymbolTableExtension.getOrThrow
 			val mainSymbol = topDefSymbols.getOrThrow("main", Position.fromToken(program.stop))
 			val mainType = mainSymbol.symbolType
 			val expectedMainType = TFunction(Seq.empty, TInt)
@@ -52,18 +57,33 @@ def main(inputFileString: String, debug: Boolean): Unit = {
 		}
 
 		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!${Console.RESET}")
+
+		/**********
+		| BACKEND |
+		**********/
+
+		val inputFileBaseName: String = FilenameUtils.getBaseName(inputFileString)
+		given fw: FileWriter(inputFilePath.resolveSibling(s"$inputFileBaseName.ll").toFile)
+
+		// Generate class definitions.
+		ClassRepresentationBuilder.buildClasses
+
+		fw.close()
+
 	} catch {
+
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
 			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}${Console.RESET}")
 		case f: FrontendError =>
-			if (debug) f.printStackTrace()
+			if (debugFlag) f.printStackTrace()
 			val fileReader = scala.io.Source.fromFile(inputFileString)
 			val line: String = fileReader.getLines.drop(f.position.line - 1).nextOption.getOrElse("")
 			exitWithError(s"""
 					 |${Console.BOLD}${Console.RED}WRONG!
 					 |\t${f.frontendErrorToString}
 					 |\t|$line
-					 |\t|${line.collect { case '\t' => '\t' case _ => ' ' } .take(f.position.col - 1)}^
+					 |\t|${line.collect { case '\t' => '\t'; case _ => ' ' } .take(f.position.col - 1)}^
 					 |${Console.RESET}""".stripMargin)
+
 	}
 }

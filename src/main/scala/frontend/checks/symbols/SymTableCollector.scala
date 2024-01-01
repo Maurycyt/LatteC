@@ -9,7 +9,7 @@ class SymTableCollector extends LatteBaseVisitor[SymTable] {
 	override def defaultResult: SymTable = SymTable.empty
 
 	override def aggregateResult(aggregate: SymTable, nextResult: SymTable): SymTable = {
-		import SymTable.combineAll
+		import SymbolTableExtension.combineAll
 		aggregate.combineAll(nextResult)
 	}
 }

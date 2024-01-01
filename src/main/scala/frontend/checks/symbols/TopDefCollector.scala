@@ -26,7 +26,7 @@ class TopDefCollector(using classNames: Set[String]) extends SymTableCollector {
 	}
 
 	private def superVisitProgram(ctx: LatteParser.ProgramContext): SymTable = {
-		import SymTable.combineAll
+		import SymbolTableExtension.combineAll
 		SymTable.withLattePredefined.combineAll(super.visitProgram(ctx))
 	}
 

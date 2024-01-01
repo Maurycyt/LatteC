@@ -19,8 +19,12 @@ ${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/s
 build: build.sbt
 	sbt compile
 
+.PHONY: clean-test
+clean-test:
+	find . -name '*.ll' -delete
+
 .PHONY: clean
-clean:
+clean: clean-test
 	sbt clean
 	rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
 	rm -rf target/ project/target/

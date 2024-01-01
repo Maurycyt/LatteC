@@ -38,7 +38,7 @@ class ClassTableCollector()(using hierarchyTable: HierarchyTable) extends LatteB
 			if (!resultTable.contains(targetClass)) {
 				hierarchyTable(targetClass)._2 match {
 					case None =>
-						resultTable.put(targetClass, ClassTableEntry(MemberTable.empty, None))
+						resultTable.put(targetClass, ClassTableEntry(MemberTable(targetClass), None))
 					case Some(parentClass) =>
 						if !hierarchyTable.contains(parentClass) then
 							throw new FrontendError {
@@ -46,7 +46,7 @@ class ClassTableCollector()(using hierarchyTable: HierarchyTable) extends LatteB
 								override def message: String = s"Class $parentClass does not exist."
 							}
 						collectForClass(parentClass)
-						resultTable.put(targetClass, ClassTableEntry(resultTable(parentClass).memberTable.copy, Some(parentClass)))
+						resultTable.put(targetClass, ClassTableEntry(resultTable(parentClass).memberTable.copy(targetClass), Some(parentClass)))
 				}
 
 				// Now, join the members.

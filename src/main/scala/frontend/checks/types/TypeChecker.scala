@@ -15,7 +15,7 @@ import scala.jdk.CollectionConverters.*
 /**
  * Checks if an expression is type sound and returns its type.
  */
-class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
+class ExpressionTypeChecker()(using symbolStack: SymbolStack[SymbolInfo], classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
 	import ClassTable.getClassOrThrow
 
 	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType]): LatteType = {
@@ -72,7 +72,6 @@ class ExpressionTypeChecker()(using symbolStack: SymbolStack, classNames: Set[St
 	}
 
 	override def visitVID(ctx: LatteParser.VIDContext): LatteType = {
-		import SymbolStack.getOrThrow
 		symbolStack.getOrThrow(ctx.ID.getText, Position.fromToken(ctx.ID.getSymbol)).symbolType
 	}
 
@@ -156,25 +155,24 @@ class StatementTypeChecker(
 	currentExpectedReturnType: Option[LatteType] = None,
 	currentClass: Option[TClass] = None
 )(using
-	private var symbolStack: SymbolStack,
+	private var symbolStack: SymbolStack[SymbolInfo],
 	inheritanceTable: HierarchyTable,
 	classTable: ClassTable,
 	classNames: Set[String]
 ) extends LatteBaseVisitor[LatteStmtType] {
 	given Option[TClass] = currentClass
 
-	import ClassTable.getClassOrThrow, SymbolStack.getOrThrow
+	import ClassTable.getClassOrThrow
 
 	private def withNewScopeDo(newScope: SymTable = SymTable.empty)(f : => LatteStmtType): LatteStmtType = {
-		symbolStack = newScope :: symbolStack
+		symbolStack.addScope(newScope)
 		val result = f
-		symbolStack = symbolStack.tail
+		symbolStack.removeScope()
 		result
 	}
 
-	private def addSymbol(symbolName: String, symbolInfo: SymbolInfo): Unit = {
-		import SymTable.combineWith
-		symbolStack.head.combineWith(symbolName, symbolInfo)
+	private def addSymbol(symbolInfo: SymbolInfo): Unit = {
+		symbolStack += symbolInfo
 	}
 
 	override def visitClassDef(ctx: LatteParser.ClassDefContext): LatteStmtType = {
@@ -258,7 +256,7 @@ class StatementTypeChecker(
 			val itemSymbol = itemCtx.ID.getSymbol
 			val itemName = itemSymbol.getText
 			if (itemCtx.expr != null) ExpressionTypeChecker().matchExprTypeWithExpected(itemCtx.expr, Seq(itemType))
-			addSymbol(itemName, SymbolInfo(Position.fromToken(itemSymbol), itemName, itemType))
+			addSymbol(SymbolInfo(Position.fromToken(itemSymbol), itemName, itemType))
 		}
 		Ignored
 	}
