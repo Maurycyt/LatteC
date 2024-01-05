@@ -1,4 +1,4 @@
-void main() {
+int main() {
     printStr("WRONG!");
-    return;
+    return 0;
 }

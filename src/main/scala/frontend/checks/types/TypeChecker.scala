@@ -6,7 +6,7 @@ import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 import frontend.checks.types.LatteStmtType.*
 import frontend.checks.types.LatteType.*
 import grammar.{LatteBaseVisitor, LatteParser}
-import grammar.LatteParser.{FunctionDefContext, MFunContext}
+import grammar.LatteParser.{FunctionDefContext, MFunContext, VMemContext}
 import org.antlr.v4.runtime.tree.ParseTree
 
 import scala.collection.mutable
@@ -267,8 +267,21 @@ class StatementTypeChecker(
 				override def position: Position = Position.fromToken(ctx.value.start)
 				override def message: String = "Assigning to self is forbidden."
 			}
+
 		val valueType = ExpressionTypeChecker().visit(ctx.value)
 		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(valueType))
+
+		ctx.value match {
+			case vMem: VMemContext => ExpressionTypeChecker().visit(vMem.value) match {
+				case _: TArray => throw new FrontendError {
+					override def position: Position = Position.fromToken(ctx.value.start)
+					override def message: String = "Assigning to array length is forbidden."
+				}
+				case _ => ()
+			}
+			case _ => ()
+		}
+
 		Ignored
 	}
 
