@@ -5,6 +5,7 @@ package backend.generation
 
 object NamingConvention {
 	val self: String = "%self"
+	def stringConstant(idx: Int): String = s"@string.$idx"
 	def function(functionName: String): String = s"@function.$functionName"
 	def structType(className: String): String = s"%struct.$className"
 	def method(className: String, methodName: String): String = s"@method.$className.$methodName"

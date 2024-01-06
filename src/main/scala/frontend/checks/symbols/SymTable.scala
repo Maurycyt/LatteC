@@ -3,7 +3,7 @@ package frontend.checks.symbols
 import frontend.{FrontendError, Position}
 import frontend.checks.symbols
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
-import frontend.checks.types.LatteType
+import frontend.checks.types.{CompilerType, LatteType}
 import frontend.checks.types.LatteType.*
 
 import scala.annotation.{tailrec, targetName}
@@ -47,7 +47,7 @@ trait SymbolInterface {
 	/**
 	 * @return The type of the symbol
 	 */
-	def symbolType: LatteType
+	def symbolType: CompilerType
 }
 
 object SymbolTableExtension {

@@ -7,3 +7,8 @@ target/
 /latc
 /latc_llvm
 /mw429680.tgz
+
+*.ll
+*.bc
+*.o
+*.s

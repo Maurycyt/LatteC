@@ -1,7 +1,7 @@
 package backend.generation
 
 import frontend.checks.symbols.SymbolInterface
-import frontend.checks.types.LatteType
+import frontend.checks.types.{CompilerType, LatteType}
 import frontend.Position
 
 /**
@@ -12,7 +12,7 @@ import frontend.Position
  */
 class SymbolSourceInfo(val symbolName: String, val hostClass: Option[String], var source: Source) extends SymbolInterface {
 	override def declarationPosition: Position = Position(0, 0) // Whatever, we won't be using it. I know, this is *slightly* spaghetti.
-	override def symbolType: LatteType = source.valueType
+	override def symbolType: CompilerType = source.valueType
 
 	def this(info: SymbolInterface) = this(info.symbolName, None, Undefined(info.symbolType))
 }

@@ -1,4 +1,4 @@
-import backend.generation.ClassRepresentationBuilder
+import backend.generation.{ClassRepresentationBuilder, PreambleGenerator, StringConstantGenerator, Label}
 import frontend.{FrontendError, Position}
 import frontend.checks.symbols.*
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
@@ -11,6 +11,7 @@ import org.apache.commons.io.FilenameUtils
 
 import java.io.FileWriter
 import java.nio.file.Path
+import scala.sys.process.Process
 
 def exitWithError(message: String, status: Int = 42): Unit = {
 	if (message.nonEmpty) {
@@ -32,7 +33,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		***********/
 
 		// Get symbols
-		val program: ProgramContext = ParseTreeGenerator.getParseTree(inputFilePath)
+		given program: ProgramContext = ParseTreeGenerator.getParseTree(inputFilePath)
 		val topDefSymbols: SymTable = TopDefCollector(using Set.empty).visitProgram(program)
 		given definedClassNames: Set[String] = topDefSymbols.classNames
 		given symbolStack: SymbolStack[SymbolInfo] = SymbolStack(topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }})
@@ -50,7 +51,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 			val mainSymbol = topDefSymbols.getOrThrow("main", Position.fromToken(program.stop))
 			val mainType = mainSymbol.symbolType
 			val expectedMainType = TFunction(Seq.empty, TInt)
-			if (mainType != expectedMainType) throw new FrontendError {
+			if mainType != expectedMainType then throw new FrontendError {
 				override val position: Position = mainSymbol.declarationPosition
 				override val message: String = s"Main symbol 'main' has type '$mainType' but is expected to have type '$expectedMainType'."
 			}
@@ -63,12 +64,23 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		**********/
 
 		val inputFileBaseName: String = FilenameUtils.getBaseName(inputFileString)
-		given fw: FileWriter(inputFilePath.resolveSibling(s"$inputFileBaseName.ll").toFile)
+		def getPath(extension: String): Path = inputFilePath.resolveSibling(s"$inputFileBaseName.$extension")
 
-		// Generate class definitions.
+		given fw: FileWriter(getPath("ll").toFile)
+
+		// Generate preamble, string constants, and class definitions.
+		PreambleGenerator.generatePreamble
+		given stringConstantMapping: Map[String, Label] = StringConstantGenerator.generateStringConstants
 		ClassRepresentationBuilder.buildClasses
 
 		fw.close()
+
+		// Finally, compile.
+		Process(Seq("llvm-as", getPath("ll").toString, "-o", getPath("bc").toString)).!
+		Process(Seq("llc", getPath("bc").toString, "-o", getPath("s").toString)).!
+		Process(Seq("as", getPath("s").toString, "-o", getPath("o").toString)).!
+//		Process(Seq("clang", "src/main/resources/aux.o", getPath("o").toString, "-o", inputFilePath.resolveSibling(inputFileBaseName).toString)).!
+//		if !debug.flag then Process(Seq("rm", getPath("ll").toString, getPath("bc").toString, getPath("s").toString, getPath("o").toString)).!
 
 	} catch {
 

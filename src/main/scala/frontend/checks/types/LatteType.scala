@@ -3,7 +3,17 @@ package frontend.checks.types
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
 import backend.generation.NamingConvention.structType
 
-sealed trait LatteType {
+sealed trait CompilerType {
+	def toLLVM: String
+}
+
+object CompilerType {
+	case object AnyPointer extends CompilerType { override val toLLVM: String = "i8*" }
+	case object FunctionPointer extends CompilerType { override val toLLVM: String = "void (...)*" }
+	case class PointerTo(underlying: CompilerType) extends CompilerType { override val toLLVM: String = s"${underlying.toLLVM}*"}
+}
+
+sealed trait LatteType extends CompilerType {
 	/**
 	 * Checks if this type is a subtype of the other type in the context given by the inheritance table.
 	 */
@@ -18,7 +28,7 @@ sealed trait LatteType {
 	 * Returns the type name as expected in the generated LLVM code.
 	 * For classes and functions it returns their type with a pointer, because these full types are almost always referenced with a pointer.
 	 */
-	def toLLVM: String = toLLVMNoPointer
+	override def toLLVM: String = toLLVMNoPointer
 
 	/**
 	 * Same as [[toLLVM]], but does not append the pointer asterisk for classes and functions.
@@ -32,8 +42,7 @@ object LatteType {
 	case object TInt extends TNonFun { override val toString: String = "int"; override val toLLVMNoPointer: String = "i64" }
 	case object TStr extends TNonFun {
 		override val toString: String = "string"
-		override val toLLVMNoPointer: String = structType("string")
-		override val toLLVM: String = s"$toLLVMNoPointer*"
+		override val toLLVMNoPointer: String = "i8*"
 	}
 	case object TBool extends TNonFun { override val toString: String = "bool"; override val toLLVMNoPointer: String = "i1" }
 	case object TVoid extends TNonFun { override val toString: String = "void"; override val toLLVMNoPointer: String = "void" }
@@ -67,7 +76,7 @@ object LatteType {
 		override def isValid(using classNames: Set[String]): Boolean = args.forall(_.isValid) && result.isValid
 		override val toLLVMNoPointer: String = args.map(_.toLLVM).mkString(s"${result.toLLVM}(", ",", ")")
 		override val toLLVM: String = s"$toLLVMNoPointer*"
-	}	
+	}
 }
 
 sealed trait LatteStmtType {

@@ -10,11 +10,12 @@ import scala.jdk.CollectionConverters.*
 
 /**
  * Returns the set of all assembled functions in non-SSA form.
- * @param symbolStack The symbol stack used when assembling a function.
- * @param classTable The class table of the program.
- * @param hostClass The possible host class of the function being assembled.
+ * @param symbolStack           The symbol stack used when assembling a function.
+ * @param classTable            The class table of the program.
+ * @param hostClass             The possible host class of the function being assembled.
+ * @param stringConstantMapping The mapping of string constants to labels where they are defined.
  */
-class FunctionAssembler(using symbolStack: SymbolStack[SymbolSourceInfo], classTable: ClassTable, hostClass: Option[String]) extends LatteBaseVisitor[Set[Function]] {
+class FunctionAssembler(using symbolStack: SymbolStack[SymbolSourceInfo], classTable: ClassTable, hostClass: Option[String], stringConstantMapping: Map[String, Label]) extends LatteBaseVisitor[Set[Function]] {
 	given classNames: Set[String] = classTable.keys.toSet
 
 	override def defaultResult: Set[Function] = Set.empty
@@ -34,10 +35,11 @@ class FunctionAssembler(using symbolStack: SymbolStack[SymbolSourceInfo], classT
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): Set[Function] = {
 		val functionName: String = ctx.ID.getText
 		val functionType: LatteType = TypeCollector().visitFunctionDef(ctx)
-		val functionSourceInfo: SymbolSourceInfo = hostClass match {
-			case Some(className) => SymbolSourceInfo(functionName, hostClass, Label(functionType, NamingConvention.method(className, functionName)))
-			case None => SymbolSourceInfo(functionName, hostClass, Label(functionType, NamingConvention.function(functionName)))
+		val functionNameInLLVM = hostClass match {
+			case Some(className) => NamingConvention.method(className, functionName)
+			case None => NamingConvention.function(functionName)
 		}
+		val functionSourceInfo: SymbolSourceInfo = SymbolSourceInfo(functionName, hostClass, Label(functionType, functionNameInLLVM))
 
 		val argsWithTypes: Seq[(String, LatteType)] = ctx.args.ID.asScala.toSeq.zip(ctx.args.anyType.asScala.toSeq)
 			.map { (id, anyType) => id.getText -> TypeCollector().visit(anyType) }
@@ -57,10 +59,10 @@ class FunctionAssembler(using symbolStack: SymbolStack[SymbolSourceInfo], classT
 				}
 			)
 
-		val assembledFunction: Function = Function(functionName, argsWithTypes.map(_._1), newScope, hostClass)
-		assembledFunction.addBlock(Block("entry"))
+		val assembledFunction: Function = Function(functionNameInLLVM, argsWithTypes.map(_._1), newScope, hostClass, NameGenerator())
+		assembledFunction.addBlock(Some("entry"))
 
-		StatementAssembler(using symbolStack, assembledFunction, "entry", hostClass, None).visitBlock(ctx.block)
+		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
 
 		Set(assembledFunction)
 	}
