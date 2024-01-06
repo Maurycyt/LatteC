@@ -1,5 +1,6 @@
-package backend.generation
+package backend.representation
 
+import backend.generation.*
 import frontend.checks.types.CompilerType
 
 import scala.annotation.targetName
@@ -30,7 +31,7 @@ case object Mul extends BinaryOperator
 case object Div extends BinaryOperator
 case object Mod extends BinaryOperator
 case object Eq extends BinaryOperator
-case object Neq extends BinaryOperator
+case object Ne extends BinaryOperator
 case object Lt extends BinaryOperator
 case object Le extends BinaryOperator
 case object Gt extends BinaryOperator
@@ -41,7 +42,7 @@ case object Or extends BinaryOperator
 object BinaryOperator {
 	private val binOpMapping: Map[String, BinaryOperator] = Map(
 		"+" -> Plus, "-" -> Minus, "*" -> Mul, "/" -> Div, "%" -> Mod,
-		"==" -> Eq, "!=" -> Neq, "<" -> Lt, "<=" -> Le, ">" -> Gt, ">=" -> Ge,
+		"==" -> Eq, "!=" -> Ne, "<" -> Lt, "<=" -> Le, ">" -> Gt, ">=" -> Ge,
 		"&&" -> And, "||" -> Or
 	)
 
@@ -50,14 +51,19 @@ object BinaryOperator {
 
 // Constants, Registers, and Labels
 
-sealed trait Source { def valueType: CompilerType }
+sealed trait Source {
+	def valueType: CompilerType
+	def toStringWithoutType: String
+	def toStringWithType: String = s"${valueType.toLLVM} $toStringWithoutType"
+	override def toString: String = toStringWithoutType
+}
 
 sealed trait Value extends Source
 sealed trait DefinedValue extends Value
-sealed trait Name extends Source { def name: String }
+sealed trait Name extends Source { def name: String; override def toStringWithoutType: String = name }
 
-case class Undefined(valueType: CompilerType) extends Value
-case class Constant(valueType: CompilerType, value: Int) extends DefinedValue
+case class Undefined(valueType: CompilerType) extends Value { override def toStringWithoutType: String = "???" }
+case class Constant(valueType: CompilerType, value: Int) extends DefinedValue { override def toStringWithoutType: String = value.toString }
 case class Register(valueType: CompilerType, name: String) extends DefinedValue with Name
 case class Label(valueType: CompilerType, name: String) extends Name
 
@@ -65,7 +71,7 @@ case class Label(valueType: CompilerType, name: String) extends Name
 
 sealed trait Instruction
 
-case class Copy(varName: String, value: DefinedValue) extends Instruction
+case class Copy(dst: Register, value: DefinedValue) extends Instruction
 case class PhiCase(blockName: String, value: DefinedValue)
 case class Phi(dst: Register, cases: PhiCase*) extends Instruction
 
@@ -76,14 +82,14 @@ case class UnOp(dst: Register, op: UnaryOperator, arg: Value) extends Instructio
 case class BinOp(dst: Register, arg1: Value, op: BinaryOperator, arg2: Value) extends Instruction
 case class GetElementPtr(dst: Register, ptr: Name, idx: DefinedValue, idxs: DefinedValue*) extends Instruction
 
-case class Jump(label: String) extends Instruction
-case class ConditionalJump(arg: Value, labelTrue: String, labelFalse: String) extends Instruction
+case class Jump(blockName: String) extends Instruction
+case class ConditionalJump(arg: Value, blockNameTrue: String, blockNameFalse: String) extends Instruction
 case class PtrStore(ptr: Register, arg: Value) extends Instruction
 case class PtrLoad(dst: Register, ptr: Register) extends Instruction
 case object ReturnVoid extends Instruction
 case class Return(arg: Value) extends Instruction
-case class CallVoid(ptr: Name, args: Value*) extends Instruction
-case class Call(dst: Register, ptr: Name, args: Value*) extends Instruction
+case class CallVoid(name: Name, args: Value*) extends Instruction
+case class Call(dst: Register, name: Name, args: Value*) extends Instruction
 
 // Blocks
 
@@ -98,6 +104,7 @@ class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]
 
 class Function(
 	val nameInLLVM: String,
+	val returnType: CompilerType,
 	val arguments: Seq[String],
 	val argumentsInfo: mutable.HashMap[String, SymbolSourceInfo],
 	val hostClass: Option[String],
@@ -109,7 +116,7 @@ class Function(
 	private val blockGraph: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
 
 	def addBlock(name: Option[String] = None): Block = {
-		val block = Block(s"%${name.getOrElse(nameGenerator.nextLabel)}")
+		val block = Block(s"${name.getOrElse(nameGenerator.nextLabel)}")
 		blockNameToIndex.put(block.name, blocks.size)
 		blocks.append(block)
 		blockGraph.append(mutable.ArrayBuffer.empty)

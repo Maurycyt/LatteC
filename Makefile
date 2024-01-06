@@ -21,7 +21,11 @@ build: build.sbt
 
 .PHONY: clean-test
 clean-test:
-	find . -name '*.ll' -delete
+	find src/test -name '*.ll' -delete
+	find src/test -name '*.bc' -delete
+	find src/test -name '*.s' -delete
+	find src/test -name '*.o' -delete
+	find src/test -type f -executable -delete
 
 .PHONY: clean
 clean: clean-test

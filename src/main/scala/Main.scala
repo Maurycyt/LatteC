@@ -1,4 +1,6 @@
-import backend.generation.{ClassRepresentationBuilder, PreambleGenerator, StringConstantGenerator, Label}
+import backend.generation.{ClassRepresentationBuilder, FunctionAssembler, NamingConvention, PreambleGenerator, StringConstantGenerator, SymbolSourceInfo}
+import backend.representation.{Function, Label}
+import backend.transcription.Transcriber
 import frontend.{FrontendError, Position}
 import frontend.checks.symbols.*
 import frontend.checks.symbols.ClassHierarchyCollector.HierarchyTable
@@ -36,7 +38,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		given program: ProgramContext = ParseTreeGenerator.getParseTree(inputFilePath)
 		val topDefSymbols: SymTable = TopDefCollector(using Set.empty).visitProgram(program)
 		given definedClassNames: Set[String] = topDefSymbols.classNames
-		given symbolStack: SymbolStack[SymbolInfo] = SymbolStack(topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }})
+		given topDefSymbolStack: SymbolStack[SymbolInfo] = SymbolStack(topDefSymbols.filter { (_, symbolInfo) => symbolInfo.symbolType match { case _: TClass => false; case _ => true }})
 		given hierarchyTable: HierarchyTable = ClassHierarchyCollector.visitProgram(program)
 		given classTable: ClassTable = ClassTableCollector().visitProgram(program)
 
@@ -70,8 +72,22 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Generate preamble, string constants, and class definitions.
 		PreambleGenerator.generatePreamble
-		given stringConstantMapping: Map[String, Label] = StringConstantGenerator.generateStringConstants
+		fw write "\n\n"
+		val stringConstantMapping: Map[String, (Int, Label)] = StringConstantGenerator.generateStringConstants
+		given Map[String, (Int, Label)] = stringConstantMapping
+		fw write "\n\n"
 		ClassRepresentationBuilder.buildClasses
+
+		// Assemble the functions and transcribe them to LLVM IR.
+		given topDefSymbolSourceStack: SymbolStack[SymbolSourceInfo] = SymbolStack(
+			topDefSymbols.collect {
+				case (symbolName, symbolInfo) if symbolInfo.symbolType.isInstanceOf[TFunction] =>
+					val symbolNameInLLVM = if SymTable.LattePredefinedNames.contains(symbolName) then s"@$symbolName" else NamingConvention.function(symbolName)
+					symbolName -> SymbolSourceInfo(symbolName, None, Label(symbolInfo.symbolType, symbolNameInLLVM))
+			}
+		)
+		val functions: Set[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program)
+		Transcriber().transcribeFunctions(functions)
 
 		fw.close()
 
@@ -79,8 +95,9 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		Process(Seq("llvm-as", getPath("ll").toString, "-o", getPath("bc").toString)).!
 		Process(Seq("llc", getPath("bc").toString, "-o", getPath("s").toString)).!
 		Process(Seq("as", getPath("s").toString, "-o", getPath("o").toString)).!
-//		Process(Seq("clang", "src/main/resources/aux.o", getPath("o").toString, "-o", inputFilePath.resolveSibling(inputFileBaseName).toString)).!
-//		if !debug.flag then Process(Seq("rm", getPath("ll").toString, getPath("bc").toString, getPath("s").toString, getPath("o").toString)).!
+		Process(Seq("clang", "src/main/resources/aux.c", "-c", "-o", "src/main/resources/aux.o")).!
+		Process(Seq("clang", "-no-pie", "src/main/resources/aux.o", getPath("o").toString, "-o", inputFilePath.resolveSibling(inputFileBaseName).toString)).!
+		if !debug.flag then Process(Seq("rm", getPath("ll").toString, getPath("bc").toString, getPath("s").toString, getPath("o").toString)).!
 
 	} catch {
 

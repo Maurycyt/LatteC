@@ -17,6 +17,12 @@ object PreambleGenerator {
 				 |
 				 |declare i8* @malloc(i64)
 				 |declare void @free(i8*)
+				 |
+				 |define i32 @main() {
+				 |\t%result64 = call i64 ${NamingConvention.function("main")}()
+				 |\t%result32 = trunc i64 %result64 to i32
+				 |\tret i32 %result32
+				 |}
 				 |""".stripMargin
 	}
 }

@@ -1,5 +1,6 @@
 package backend.generation
 
+import backend.representation.{Source, Undefined}
 import frontend.checks.symbols.SymbolInterface
 import frontend.checks.types.{CompilerType, LatteType}
 import frontend.Position

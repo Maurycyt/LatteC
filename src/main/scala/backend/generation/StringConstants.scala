@@ -1,5 +1,6 @@
 package backend.generation
 
+import backend.representation.Label
 import frontend.checks.types.LatteType.TStr
 import grammar.{LatteBaseVisitor, LatteParser}
 
@@ -9,23 +10,24 @@ object StringConstantGenerator {
 	/**
 	 * Generates LLVM IR code which defines the string constants in a program.
 	 * @param fw The file writer to use when outputting LLVM IR code.
-	 * @return A mapping from string to label to be referenced by other parts of the compiler when referring to string constants.
+	 * @return A mapping from string to length and label to be referenced by
+	 *         other parts of the compiler when referring to string constants.
 	 */
-	def generateStringConstants(using ctx: LatteParser.ProgramContext, fw: FileWriter): Map[String, Label] = {
-		val stringConstants: Seq[(String, Label)] =
+	def generateStringConstants(using ctx: LatteParser.ProgramContext, fw: FileWriter): Map[String, (Int, Label)] = {
+		val stringConstants: Seq[(String, (String, Int, Label))] =
 			StringConstantCollector.visitProgram(ctx).toSeq
-				.map(_.replace("\\n", "\\0A").appendedAll("\\00"))
+				.map { str => str -> str.stripPrefix("\"").stripSuffix("\"").replace("\\n", "\\0A").appendedAll("\\00") }
 				.zipWithIndex
-				.map { (str, idx) => str -> Label(TStr, NamingConvention.stringConstant(idx)) }
+				.map { case ((str, strLLVM), idx) => str -> (strLLVM, str.length - 1, Label(TStr, NamingConvention.stringConstant(idx))) }
 
-		stringConstants.foreach { (str, label) =>
+		stringConstants.foreach { case (_, (strLLVM, length, label)) =>
 			fw write
-				s"""${label.name} = internal constant [${str.length} x i8]
-					 |\tc"$str"
+				s"""${label.name} = internal constant [$length x i8]
+					 |\tc"$strLLVM"
 					 |""".stripMargin
 		}
 
-		stringConstants.toMap
+		stringConstants.map {case (str, (_, length, label)) => (str, (length, label))}.toMap
 	}
 }
 

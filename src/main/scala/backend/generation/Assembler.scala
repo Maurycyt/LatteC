@@ -1,5 +1,6 @@
 package backend.generation
 
+import backend.representation.*
 import frontend.checks.symbols.{ClassTable, MemberInfo, SymbolStack}
 import frontend.checks.types.LatteType
 import frontend.checks.types.LatteType.*
@@ -62,7 +63,7 @@ class StatementAssembler()(using
 		if writable then
 			activeBlock += PtrStore(valueSource, exprSource)
 		else
-			activeBlock += Copy(valueSource.name, exprSource)
+			activeBlock += Copy(valueSource, exprSource)
 
 		considerJumping(activeBlock)
 	}

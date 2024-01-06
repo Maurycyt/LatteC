@@ -111,6 +111,8 @@ object SymTable {
 		"readString" -> TFunction(Seq.empty, TStr)
 	).map { (name, symbolType) => (name, SymbolInfo(Position.predefined, name, symbolType)) }
 
+	val LattePredefinedNames: Seq[String] = LattePredefined.map(_._1)
+
 	def withLattePredefined: SymTable = mutable.HashMap.from(LattePredefined)
 
 	extension(symTable: SymTable) {
