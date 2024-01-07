@@ -286,6 +286,7 @@ class SymbolStack[Info <: SymbolInterface](inits: mutable.HashMap[String, Info]*
 	}
 
 	def addScope(scope: Table = mutable.HashMap.empty): Unit = {
+		if debug.flag then println(s"New scope: $scope.")
 		symTables = scope :: symTables
 		scope.keys.foreach{ symbolName =>
 			symCounts.updateWith(symbolName) { case None => Some(1); case Some(c) => Some(c + 1) }
@@ -293,6 +294,7 @@ class SymbolStack[Info <: SymbolInterface](inits: mutable.HashMap[String, Info]*
 	}
 
 	def removeScope(): Unit = {
+		if debug.flag then println(s"Removing scope.")
 		val removedSymTable = symTables.head
 		symTables = symTables.tail
 		removedSymTable.keys.foreach { symbolName => symCounts.updateWith(symbolName){

@@ -39,12 +39,14 @@ class FunctionAssembler()(
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): Set[Function] = {
 		val functionName: String = ctx.ID.getText
+		if debug.flag then println(s"Assembling function $functionName.")
 		val functionType: TFunction = TypeCollector().visitFunctionDef(ctx).asInstanceOf[TFunction]
 		val functionNameInLLVM = hostClass match {
 			case Some(className) => NamingConvention.method(className, functionName)
 			case None => NamingConvention.function(functionName)
 		}
 		val functionSourceInfo: SymbolSourceInfo = SymbolSourceInfo(functionName, hostClass, Label(functionType, functionNameInLLVM))
+		val nameGenerator = NameGenerator()
 
 		val argsWithTypes: Seq[(String, LatteType)] =
 			if ctx.args != null then
@@ -64,14 +66,18 @@ class FunctionAssembler()(
 			// The arguments.
 			mutable.HashMap.from(
 				argsWithTypes.map { (name, anyType) => name ->
-					SymbolSourceInfo(name, None, if anyType != TVoid then Register(anyType, name) else Undefined(anyType))
+					SymbolSourceInfo(name, None, if anyType != TVoid then Register(anyType, s"%${nameGenerator.nextRegister}") else Undefined(anyType))
 				}
 			)
 
-		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.map(_._1), newScope, hostClass, NameGenerator())
+		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.map(_._1), newScope, hostClass, nameGenerator)
 		assembledFunction.addBlock(Some("entry"))
 
+		symbolStack.addScope(newScope)
 		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
+		symbolStack.removeScope()
+
+		if debug.flag then println(s"Done with function $functionName.")
 
 		Set(assembledFunction)
 	}

@@ -1,4 +1,4 @@
-import backend.generation.{ClassRepresentationBuilder, FunctionAssembler, NamingConvention, PreambleGenerator, StringConstantGenerator, SymbolSourceInfo}
+import backend.generation.{ClassRepresentationBuilder, FunctionAssembler, NamingConvention, PreambleGenerator, Normaliser, StringConstantGenerator, SymbolSourceInfo}
 import backend.representation.{Function, Label}
 import backend.transcription.Transcriber
 import frontend.{FrontendError, Position}
@@ -87,6 +87,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 			}
 		)
 		val functions: Set[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program)
+		functions.foreach { function => Normaliser.processFunction()(using function) }
 		Transcriber().transcribeFunctions(functions)
 
 		fw.close()

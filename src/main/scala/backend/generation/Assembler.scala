@@ -30,31 +30,38 @@ class StatementAssembler()(using
 	thisBlock  : Block,
 	hostClass  : Option[String],
 	blockAfter : Option[Block]
-) extends LatteBaseVisitor[Block] {
-	private def considerJumping(activeBlock: Block): Block = {
+) extends LatteBaseVisitor[(Block, Boolean)] {
+	private def considerJumping(activeBlock: Block, brokeFlow: Boolean): (Block, Boolean) = {
+		if brokeFlow then return (activeBlock, true)
+
 		blockAfter match {
-			case None => ()
-			case Some(block) => activeBlock += Jump(block.name)
+			case None => (activeBlock, false)
+			case Some(block) => activeBlock += Jump(block.name); (activeBlock, true)
 		}
-		activeBlock
 	}
 
-	override def visitBlock(ctx: LatteParser.BlockContext): Block = {
+	override def visitBlock(ctx: LatteParser.BlockContext): (Block, Boolean) = {
 		symbolStack.addScope()
 		val stmts = ctx.stmt.asScala.toSeq
-		val activeBlock = stmts.foldLeft(thisBlock) { (block, stmt) => StatementAssembler()(using thisBlock = block, blockAfter = None).visit(stmt) }
+		val (activeBlock, brokeFlow) = stmts.foldLeft((thisBlock, false)) {
+			case ((block, brokeFlow), stmt) =>
+				if brokeFlow then
+					(block, brokeFlow)
+				else
+					StatementAssembler()(using thisBlock = block, blockAfter = None).visit(stmt)
+		}
 		symbolStack.removeScope()
-		considerJumping(activeBlock)
+		considerJumping(activeBlock, brokeFlow)
 	}
 
-	override def visitSDecl(ctx: LatteParser.SDeclContext): Block = {
+	override def visitSDecl(ctx: LatteParser.SDeclContext): (Block, Boolean) = {
 		val itemType = TypeCollector(using classTable.keys.toSet).visit(ctx.anyType)
 		val items = ctx.item.asScala.toSeq
 		val activeBlock = items.foldLeft(thisBlock) { (block, item) => ItemAssembler(itemType)(using thisBlock = block).visitItem(item) }
-		considerJumping(activeBlock)
+		considerJumping(activeBlock, false)
 	}
 
-	override def visitSAss(ctx: LatteParser.SAssContext): Block = {
+	override def visitSAss(ctx: LatteParser.SAssContext): (Block, Boolean) = {
 		val (valueSource, writable, activeBlockV) = ValueAssembler().visit(ctx.value).asInstanceOf[(Register, Boolean, Block)]
 		val (exprSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
 
@@ -65,10 +72,10 @@ class StatementAssembler()(using
 		else
 			activeBlock += Copy(valueSource, exprSource)
 
-		considerJumping(activeBlock)
+		considerJumping(activeBlock, false)
 	}
 
-	private def visitPostcrement(ctx: LatteParser.SIncrContext | LatteParser.SDecrContext): Block = {
+	private def visitPostcrement(ctx: LatteParser.SIncrContext | LatteParser.SDecrContext): (Block, Boolean) = {
 		val ((valueSource, writable, activeBlock), op) = ctx match {
 			case incr: LatteParser.SIncrContext => (ValueAssembler().visit(incr.value).asInstanceOf[(Register, Boolean, Block)], Plus)
 			case decr: LatteParser.SDecrContext => (ValueAssembler().visit(decr.value).asInstanceOf[(Register, Boolean, Block)], Minus)
@@ -85,33 +92,33 @@ class StatementAssembler()(using
 		else
 			activeBlock += BinOp(valueSource, valueSource, op, Constant(TInt, 1))
 
-		considerJumping(activeBlock)
+		considerJumping(activeBlock, false)
 	}
-	override def visitSIncr(ctx: LatteParser.SIncrContext): Block = visitPostcrement(ctx)
-	override def visitSDecr(ctx: LatteParser.SDecrContext): Block = visitPostcrement(ctx)
+	override def visitSIncr(ctx: LatteParser.SIncrContext): (Block, Boolean) = visitPostcrement(ctx)
+	override def visitSDecr(ctx: LatteParser.SDecrContext): (Block, Boolean) = visitPostcrement(ctx)
 
-	override def visitSRetValue(ctx: LatteParser.SRetValueContext): Block = {
+	override def visitSRetValue(ctx: LatteParser.SRetValueContext): (Block, Boolean) = {
 		val (resultSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
 		activeBlock += Return(resultSource)
-		activeBlock
+		(activeBlock, true)
 	}
 
-	override def visitSRetVoid(ctx: LatteParser.SRetVoidContext): Block = {
+	override def visitSRetVoid(ctx: LatteParser.SRetVoidContext): (Block, Boolean) = {
 		thisBlock += ReturnVoid
-		thisBlock
+		(thisBlock, true)
 	}
 
-	override def visitSCond(ctx: LatteParser.SCondContext): Block = {
+	override def visitSCond(ctx: LatteParser.SCondContext): (Block, Boolean) = {
 		val blockIfTrue = function.addBlock()
 		val blockAfter = function.addBlock()
 
 		ExpressionAssembler()(using blocksAfter = Some(blockIfTrue, blockAfter)).visit(ctx.expr)
 		StatementAssembler()(using thisBlock = blockIfTrue, blockAfter = Some(blockAfter)).visit(ctx.stmt)
 
-		considerJumping(blockAfter)
+		considerJumping(blockAfter, false)
 	}
 
-	override def visitSCondElse(ctx: LatteParser.SCondElseContext): Block = {
+	override def visitSCondElse(ctx: LatteParser.SCondElseContext): (Block, Boolean) = {
 		val blockIfTrue = function.addBlock()
 		val blockIfFalse = function.addBlock()
 		val blockAfter = function.addBlock()
@@ -120,26 +127,28 @@ class StatementAssembler()(using
 		StatementAssembler()(using thisBlock = blockIfTrue, blockAfter = Some(blockAfter)).visit(ctx.stmt(0))
 		StatementAssembler()(using thisBlock = blockIfFalse, blockAfter = Some(blockAfter)).visit(ctx.stmt(1))
 
-		considerJumping(blockAfter)
+		considerJumping(blockAfter, false)
 	}
 
-	override def visitSWhile(ctx: LatteParser.SWhileContext): Block = {
+	override def visitSWhile(ctx: LatteParser.SWhileContext): (Block, Boolean) = {
 		val condBlock = function.addBlock()
 		val bodyBlock = function.addBlock()
 		val blockAfter = function.addBlock()
 
+		thisBlock += Jump(condBlock.name)
+		function.addJump(thisBlock.name, condBlock.name)
 		ExpressionAssembler()(using thisBlock = condBlock, blocksAfter = Some(bodyBlock, blockAfter)).visit(ctx.expr)
 		StatementAssembler()(using thisBlock = bodyBlock, blockAfter = Some(condBlock)).visit(ctx.stmt)
 
-		considerJumping(blockAfter)
+		considerJumping(blockAfter, false)
 	}
 
-	override def visitSFor(ctx: LatteParser.SForContext): Block = {
+	override def visitSFor(ctx: LatteParser.SForContext): (Block, Boolean) = {
 		???
 	}
 
-	override def visitSExp(ctx: LatteParser.SExpContext): Block = {
-		ExpressionAssembler()(using blocksAfter = blockAfter.map { b => (b, b) }).visit(ctx.expr)._2
+	override def visitSExp(ctx: LatteParser.SExpContext): (Block, Boolean) = {
+		(ExpressionAssembler()(using blocksAfter = blockAfter.map { b => (b, b) }).visit(ctx.expr)._2, false)
 	}
 }
 
@@ -165,11 +174,19 @@ class ItemAssembler(
 		val expr = ctx.expr
 		val itemName = ctx.ID.getText
 		if expr == null then
-			symbolStack.add(SymbolSourceInfo(itemName, None, Undefined(itemType)))
+			itemType match {
+				// TODO: Handle arrays?
+				case _ =>
+					val resultRegister = Register(itemType, s"%${function.nameGenerator.nextRegister}")
+					thisBlock += Copy(resultRegister, Constant(itemType, 0))
+					symbolStack.add(SymbolSourceInfo(itemName, None, resultRegister))
+			}
 			thisBlock
 		else
 			val (itemSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(expr)
-			symbolStack.add(SymbolSourceInfo(itemName, None, itemSource))
+			val resultRegister = Register(itemSource.valueType, s"%${function.nameGenerator.nextRegister}")
+			activeBlock += Copy(resultRegister, itemSource)
+			symbolStack.add(SymbolSourceInfo(itemName, None, resultRegister))
 			activeBlock
 	}
 }
@@ -222,7 +239,7 @@ class ExpressionAssembler(
 		(jumpConditionSource, activeBlock)
 	}
 
-	private def operateOnTwoIntegers(l: Int, op: String, r: Int): Constant = op match {
+	private def operateOnTwoIntegers(l: Long, op: String, r: Long): Constant = op match {
 		case "+"  => Constant(TInt, l + r)
 		case "-"  => Constant(TInt, l - r)
 		case "*"  => Constant(TInt, l * r)
@@ -268,7 +285,8 @@ class ExpressionAssembler(
 
 	override def visitEMulOp(ctx: LatteParser.EMulOpContext): (DefinedValue, Block) = {
 		// Compute subexpressions.
-		val (subExpressionSourceL, activeBlockL) = visit(ctx.expr(0))
+		val notNull = visit(ctx.expr(0))
+		val (subExpressionSourceL, activeBlockL) = notNull
 		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL).visit(ctx.expr(1))
 
 		// Compute result.
@@ -368,7 +386,7 @@ class ExpressionAssembler(
 			case Some(activeBlock) =>
 				val resultSource = Register(TBool, s"%${function.nameGenerator.nextRegister}")
 				// Construct the Phi cases based on the jumps that were added.
-				val phiCases: Seq[PhiCase] = function.getBlockJumps(activeBlock.name)
+				val phiCases: Seq[PhiCase] = function.getBlockJumpsTo(activeBlock.name)
 					.map(function.getBlockName)
 					.filterNot(_ == activeBlockR.name)
 					.map(blockName => PhiCase(blockName, Constant(TBool, op match { case LazyOp.And => 0; case LazyOp.Or => 1 })))
@@ -438,7 +456,7 @@ class ExpressionAssembler(
 		}
 	}
 
-	// EParen covered by visitChildren.
+	override def visitEParen(ctx: LatteParser.EParenContext): (DefinedValue, Block) = visit(ctx.expr)
 }
 
 

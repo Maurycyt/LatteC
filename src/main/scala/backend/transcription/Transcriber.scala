@@ -23,16 +23,15 @@ class Transcriber(
 		fw write s"define ${function.returnType.toLLVM} ${function.nameInLLVM}("
 
 		fw write function.arguments.map(function.argumentsInfo).map { argInfo =>
-			s"${argInfo.symbolType} ${argInfo.source.asInstanceOf[Register].name}"
+			s"${argInfo.symbolType.toLLVM} ${argInfo.source.asInstanceOf[Register].name}"
 		}.mkString(", ")
 
 		fw write ") nounwind {\n"
 
 		transcribeBlock(function.getBlock("entry"))
 		for (blockIdx <- 1 until function.numBlocks) do {
-			fw write "\n"
 			val block = function.getBlock(blockIdx)
-			transcribeBlock(block)
+			if block != null then transcribeBlock(block)
 		}
 
 		fw write "}\n"
@@ -65,7 +64,7 @@ class Transcriber(
 				case Or => s"or i1 $arg1, $arg2"
 			)
 			case GetElementPtr(dst, ptr, idx, idxs*) =>
-				val idxArgs = idxs.prepended(idx).map { case c: Constant => s"i32 $c"; case r: Register => s"i64 $r" }.mkString(", ")
+				val idxArgs = idxs.prepended(idx).map { case c: Constant if Int.MinValue <= c.value && c.value <= Int.MaxValue => s"i32 $c"; case other => s"i64 $other" }.mkString(", ")
 				s"$dst = getelementptr ${ptr.valueType.asInstanceOf[PointerTo].underlying.toLLVM}, ${ptr.valueType.toLLVM} $ptr, $idxArgs"
 			case Jump(blockName) => s"br label %$blockName"
 			case ConditionalJump(arg, blockNameTrue, blockNameFalse) => s"br i1 $arg, label %$blockNameTrue, label %$blockNameFalse"

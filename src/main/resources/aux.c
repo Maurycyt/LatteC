@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-void printInt(int32_t value) {
-    printf("%d\n", value);
+void printInt(int64_t value) {
+    printf("%ld\n", value);
 }
 
-int32_t readInt() {
-    int32_t result;
-    scanf("%d", &result);
+int64_t readInt() {
+    int64_t result;
+    scanf("%ld", &result);
     return result;
 }
 

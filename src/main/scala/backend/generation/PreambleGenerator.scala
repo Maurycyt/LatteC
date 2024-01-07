@@ -7,8 +7,8 @@ import java.io.FileWriter
 object PreambleGenerator {
 	def generatePreamble(using fw: FileWriter): Unit = {
 		fw write
-			s"""declare void @printInt(i32)
-				 |declare i32 @readInt()
+			s"""declare void @printInt(i64)
+				 |declare i64 @readInt()
 				 |declare void @error()
 				 |declare void @printString(${TStr.toLLVM})
 				 |declare ${TStr.toLLVM} @readString()
