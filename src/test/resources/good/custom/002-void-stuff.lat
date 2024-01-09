@@ -5,10 +5,11 @@ void g(void x, void y) {
         printString("YAY!");
     else
         printString("NAY!");
+    return x;
 }
 
 int main() {
     void x, y = f();
-    g(x, y);
+    void z = g(x, y);
     return 0;
 }

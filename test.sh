@@ -65,6 +65,8 @@ runOnBad () {
 runOnGoodCore
 #runOnGoodExt
 runOnBad
+#runOnAllInDirectory "../../../../mimuw-mrjp-tests/good" $SUCCESS_STATUS
+#runOnAllInDirectory "../../../../mimuw-mrjp-tests/bad" $FAILURE_STATUS
 
 if ((TESTS_RUN == TESTS_PASSED))
 then

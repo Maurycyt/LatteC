@@ -59,24 +59,22 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 			}
 		}
 
-		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!${Console.RESET}")
-
 		/**********
 		| BACKEND |
 		**********/
 
 		val inputFileBaseName: String = FilenameUtils.getBaseName(inputFileString)
 		def getPath(extension: String): Path = inputFilePath.resolveSibling(s"$inputFileBaseName.$extension")
-
 		given fw: FileWriter(getPath("ll").toFile)
 
-		// Generate preamble, string constants, and class definitions.
 		PreambleGenerator.generatePreamble
 		fw write "\n\n"
 		val stringConstantMapping: Map[String, (Int, Label)] = StringConstantGenerator.generateStringConstants
 		given Map[String, (Int, Label)] = stringConstantMapping
 		fw write "\n\n"
 		ClassRepresentationBuilder.buildClasses
+
+		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!${Console.RESET}")
 
 		// Assemble the functions and transcribe them to LLVM IR.
 		given topDefSymbolSourceStack: SymbolStack[SymbolSourceInfo] = SymbolStack(

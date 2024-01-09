@@ -47,7 +47,7 @@ class Transcriber(
 			case Phi(dst, cases*) => s"$dst = phi ${dst.valueType.toLLVM} ${cases.map { phiCase => s"[ ${phiCase.value}, %${phiCase.blockName} ]"}.mkString(", ")}"
 			case BitcastStringConstant(dst, stringConstant) => s"$dst = bitcast [${stringMapping(stringConstant)._1} x i8]* ${stringMapping(stringConstant)._2} to ${dst.valueType.toLLVM}"
 			case Bitcast(dst, arg) => s"$dst = bitcast ${arg.valueType.toLLVM} $arg to ${dst.valueType.toLLVM}"
-			case UnOp(dst, op, arg) => s"$dst = sub i${op match { case Inv => "64 0"; case Neg => "1 0" }}, $arg"
+			case UnOp(dst, op, arg) => s"$dst = sub i${op match { case Inv => "64 0"; case Neg => "1 1" }}, $arg"
 			case BinOp(dst, arg1, op, arg2) => s"$dst = " + (op match
 				case Plus => s"add i64 $arg1, $arg2"
 				case Minus => s"sub i64 $arg1, $arg2"

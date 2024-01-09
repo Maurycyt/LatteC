@@ -43,6 +43,8 @@ class StatementAssembler()(using
 		}
 	}
 
+	override def visitSEmpty(ctx: LatteParser.SEmptyContext): (Block, Boolean) = (thisBlock, false)
+
 	override def visitBlock(ctx: LatteParser.BlockContext): (Block, Boolean) = {
 		symbolStack.addScope()
 		val stmts = ctx.stmt.asScala.toSeq
@@ -102,7 +104,10 @@ class StatementAssembler()(using
 
 	override def visitSRetValue(ctx: LatteParser.SRetValueContext): (Block, Boolean) = {
 		val (resultSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
-		activeBlock += Return(resultSource)
+		if resultSource.valueType == TVoid then
+			activeBlock += ReturnVoid
+		else
+			activeBlock += Return(resultSource)
 		(activeBlock, true)
 	}
 
@@ -200,7 +205,6 @@ class ItemAssembler(
 /**
  * Assembles expressions in non-SSA form.
  * This visitor returns the Source of the result of the expression, and the active block where the source is to be used.
- * @param negateBooleans Whether to negate boolean expressions for optimisation purposes.
  * @param symbolStack    The symbol stack to use when assembling an expression.
  * @param classTable     Information about classes defined in the program.
  * @param function       The function which is being assembled.
@@ -208,9 +212,7 @@ class ItemAssembler(
  * @param hostClass      The possible host class of the function being assembled.
  * @param blocksAfter    The possible blocks which should be jumped to after computing the expression in the form of (ifTrue, ifFalse).
  */
-class ExpressionAssembler(
-	negateBooleans: Boolean = false
-)(
+class ExpressionAssembler()(
 	using
 	symbolStack: SymbolStack[SymbolSourceInfo],
 	classTable : ClassTable,
@@ -222,8 +224,7 @@ class ExpressionAssembler(
 
 	private def considerJumping(jumpConditionSource: DefinedValue, activeBlock: Block): (DefinedValue, Block) = {
 		blocksAfter match {
-			case Some((givenIfTrue, givenIfFalse)) =>
-				val (jumpIfTrue, jumpIfFalse) = if !negateBooleans then (givenIfTrue, givenIfFalse) else (givenIfFalse, givenIfTrue)
+			case Some((jumpIfTrue, jumpIfFalse)) =>
 				jumpConditionSource match {
 					case Constant(TBool, 1)     =>
 						activeBlock += Jump(jumpIfTrue.name)
@@ -261,19 +262,6 @@ class ExpressionAssembler(
 		case ">=" => Constant(TBool, if l >= r then 1 else 0)
 	}
 
-	private def getOpposite(op: String): String = op match {
-		case "==" => "!="
-		case "!=" => "=="
-		case "<"  => ">="
-		case "<=" => ">"
-		case ">"  => "<="
-		case ">=" => "<"
-		case "&&" => "||"
-		case "||" => "&&"
-	}
-
-	private def getOperationToCompute(op: String) = if negateBooleans then getOpposite(op) else op
-
 	override def visitEUnOp(ctx: LatteParser.EUnOpContext): (DefinedValue, Block) = ctx.unOp.getText match {
 		case "-" =>
 			// When taking the inverse, compute subexpression, then compute result.
@@ -287,7 +275,15 @@ class ExpressionAssembler(
 			}
 		case "!" =>
 			// When taking the negation, introduce negation to the context.
-			ExpressionAssembler(!negateBooleans).visit(ctx.expr)
+			blocksAfter match {
+				case None =>
+					val (subResultSource, activeBlock) = ExpressionAssembler().visit(ctx.expr)
+					val resultSource = Register(TBool, s"%${function.nameGenerator.nextRegister}")
+					activeBlock += UnOp(resultSource, Neg, subResultSource)
+					(resultSource, activeBlock)
+				case Some((jumpIfTrue, jumpIfFalse)) =>
+					ExpressionAssembler()(using blocksAfter = Some(jumpIfFalse, jumpIfTrue)).visit(ctx.expr)
+			}
 	}
 
 	override def visitEMulOp(ctx: LatteParser.EMulOpContext): (DefinedValue, Block) = {
@@ -329,7 +325,7 @@ class ExpressionAssembler(
 
 	override def visitERelOp(ctx: LatteParser.ERelOpContext): (DefinedValue, Block) = {
 		// Get operation appropriate for the context.
-		val operationToCompute = getOperationToCompute(ctx.relOp.getText)
+		val operationToCompute = ctx.relOp.getText
 		
 		// Compute subexpressions forgetting about boolean negation.
 		val (subExpressionSourceL, activeBlockL) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr(0))
@@ -354,38 +350,27 @@ class ExpressionAssembler(
 
 	private enum LazyOp { case And, Or }
 
-	override def visitEAnd(ctx: LatteParser.EAndContext): (DefinedValue, Block) = {
-		val l = ctx.expr(0)
-		val r = ctx.expr(1)
-		if negateBooleans then computeELazy(l, r, LazyOp.Or) else computeELazy(l, r, LazyOp.And)
-	}
+	override def visitEAnd(ctx: LatteParser.EAndContext): (DefinedValue, Block) = computeELazy(ctx.expr(0), ctx.expr(1), LazyOp.And)
 
-	override def visitEOr(ctx: LatteParser.EOrContext): (DefinedValue, Block) = {
-		val l = ctx.expr(0)
-		val r = ctx.expr(1)
-		if negateBooleans then computeELazy(l, r, LazyOp.And) else computeELazy(l, r, LazyOp.Or)
-	}
+	override def visitEOr(ctx: LatteParser.EOrContext): (DefinedValue, Block) = computeELazy(ctx.expr(0), ctx.expr(1), LazyOp.Or)
 
 	private def computeELazy(lCtx: LatteParser.ExprContext, rCtx: LatteParser.ExprContext, op: LazyOp): (DefinedValue, Block) = {
-		val (blockIfTrue, blockIfFalse, blockRight, blockWithResult) = blocksAfter match {
+		val (blockRight, blockIfTrue, blockIfFalse, blockWithResult) = blocksAfter match {
 			case None =>
 				// If there are no blocks given, then create your own block to save the result.
-				val rightBlock = function.addBlock()
-				val resultBlock = function.addBlock()
-				(resultBlock, resultBlock, rightBlock, Some(resultBlock))
+				(function.addBlock(), function.addBlock(), function.addBlock(), Some(function.addBlock()))
 			case Some(ifTrue, ifFalse) =>
 				// If blocks were given, then do not save the result, but jump to those given blocks instead.
-				val rightBlock = function.addBlock()
-				(ifTrue, ifFalse, rightBlock, None)
+				(function.addBlock(), ifTrue, ifFalse, None)
 		}
 
 		// Assemble the subexpressions. Propagate boolean negation.
 		val (subExpressionSourceL, activeBlockL) = op match {
-			case LazyOp.And => ExpressionAssembler(negateBooleans)(using blocksAfter = Some(blockRight, blockIfFalse)).visit(lCtx)
-			case LazyOp.Or => ExpressionAssembler(negateBooleans)(using blocksAfter = Some(blockIfTrue, blockRight)).visit(lCtx)
+			case LazyOp.And => ExpressionAssembler()(using blocksAfter = Some(blockRight, blockIfFalse)).visit(lCtx)
+			case LazyOp.Or => ExpressionAssembler()(using blocksAfter = Some(blockIfTrue, blockRight)).visit(lCtx)
 		}
 		val (subExpressionSourceR, activeBlockR) =
-			ExpressionAssembler(negateBooleans)(using thisBlock = blockRight, blocksAfter = Some(blockIfTrue, blockIfFalse)).visit(rCtx)
+			ExpressionAssembler()(using thisBlock = blockRight, blocksAfter = Some(blockIfTrue, blockIfFalse)).visit(rCtx)
 
 		// If the result was to be saved in a register, do it in a new block with Phi.
 		// Otherwise, jumping was expected, and was already handled in the other blocks.
@@ -394,15 +379,10 @@ class ExpressionAssembler(
 				// Return information about the last computation that was performed, after all other were inconclusive.
 				(subExpressionSourceR, activeBlockR)
 			case Some(activeBlock) =>
+				blockIfTrue += Jump(activeBlock.name)
+				blockIfFalse += Jump(activeBlock.name)
 				val resultSource = Register(TBool, s"%${function.nameGenerator.nextRegister}")
-				// Construct the Phi cases based on the jumps that were added.
-				val phiCases: Seq[PhiCase] = function.getBlockJumpsTo(activeBlock.name)
-					.map(function.getBlockName)
-					.filterNot(_ == activeBlockR.name)
-					.map(blockName => PhiCase(blockName, Constant(TBool, op match { case LazyOp.And => 0; case LazyOp.Or => 1 })))
-					.appended(PhiCase(activeBlockR.name, subExpressionSourceR))
-				// Obtain the result with Phi.
-				activeBlock += Phi(resultSource, phiCases: _*)
+				activeBlock += Phi(resultSource, PhiCase(blockIfTrue.name, Constant(TBool, 1)), PhiCase(blockIfFalse.name, Constant(TBool, 0)))
 				(resultSource, activeBlock)
 		}
 	}
@@ -420,14 +400,14 @@ class ExpressionAssembler(
 	}
 
 	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) = 
-		considerJumping(Constant(TBool, if negateBooleans then 0 else 1), thisBlock)
+		considerJumping(Constant(TBool, 1), thisBlock)
 
 	override def visitEFalse(ctx: LatteParser.EFalseContext): (DefinedValue, Block) =
-		considerJumping(Constant(TBool, if negateBooleans then 1 else 0), thisBlock)
+		considerJumping(Constant(TBool, 0), thisBlock)
 
 	override def visitEStr(ctx: LatteParser.EStrContext): (DefinedValue, Block) = {
 		val resultSource = Register(TStr, s"%${function.nameGenerator.nextRegister}")
-		thisBlock += BitcastStringConstant(resultSource, ctx.STR.getText)
+		thisBlock += BitcastStringConstant(resultSource, StringConstantCollector.visit(ctx).head._1)
 		(resultSource, thisBlock)
 	}
 
