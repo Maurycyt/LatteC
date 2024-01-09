@@ -39,7 +39,6 @@ class FunctionAssembler()(
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): Set[Function] = {
 		val functionName: String = ctx.ID.getText
-		if debug.flag then println(s"Assembling function $functionName.")
 		val functionType: TFunction = TypeCollector().visitFunctionDef(ctx).asInstanceOf[TFunction]
 		val functionNameInLLVM = hostClass match {
 			case Some(className) => NamingConvention.method(className, functionName)
@@ -76,8 +75,6 @@ class FunctionAssembler()(
 		symbolStack.addScope(newScope)
 		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
 		symbolStack.removeScope()
-
-		if debug.flag then println(s"Done with function $functionName.")
 
 		Set(assembledFunction)
 	}

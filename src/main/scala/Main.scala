@@ -42,8 +42,6 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		given hierarchyTable: HierarchyTable = ClassHierarchyCollector.visitProgram(program)
 		given classTable: ClassTable = ClassTableCollector().visitProgram(program)
 
-		if debug.flag then println(s"Collected Class Table:\n$classTable")
-
 		// Check types and flow.
 		StatementTypeChecker().visitProgram(program)
 

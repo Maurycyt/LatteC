@@ -26,8 +26,6 @@ class Normaliser()(using function: Function) {
 			.keySet
 		val registersToTransform: Set[Register] = argumentRegisters ++ bodyRegisters
 
-		if debug.flag then println(s"Registers to transform in $function: $registersToTransform.")
-
 		registersToTransform.foreach { register => transformRegisterIntoSSA(register, argumentRegisters) }
 	}
 
@@ -35,7 +33,6 @@ class Normaliser()(using function: Function) {
 		val occurrencesInBlocks: Seq[Int] = function.blocks.indices.map(renameRegisterInBlock(register))
 		val phiCasesForBlocks: Array[Option[mutable.Map[String, Register]]] =
 			function.blocks.indices.map(collectPhiCasesForBlock(register, argumentRegisters, occurrencesInBlocks)).toArray
-		println(s"phiCasesForBlocks: ${phiCasesForBlocks.mkString("Array(", ", ", ")")}")
 		reducePhiCases(occurrencesInBlocks, phiCasesForBlocks)
 
 		function.blocks.indices.foreach { blockIdx =>
@@ -109,8 +106,6 @@ class Normaliser()(using function: Function) {
 	}
 
 	private def findAndRemoveCopies(): Unit = {
-		if debug.flag then println(s"Removing copies from ${function.nameInLLVM}.")
-
 		var stop = false
 		while !stop do {
 			var nothingChanged = true
@@ -137,7 +132,6 @@ class Normaliser()(using function: Function) {
 	}
 
 	private def substitute(copy: Copy): Unit = {
-		if debug.flag then println(s"\tFound $copy.")
 		for (b <- function.blocks; iIdx <- b.instructions.indices) {
 			if b.instructions(iIdx) != null then
 				b.instructions(iIdx) = b.instructions(iIdx).substitute(copy.dst, copy.value)
