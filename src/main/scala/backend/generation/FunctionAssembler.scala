@@ -1,6 +1,6 @@
 package backend.generation
 
-import backend.representation.{Function, Label, Register, Undefined}
+import backend.representation.{Constant, Function, Label, Register}
 import frontend.checks.symbols.{ClassTable, SymbolInterface, SymbolStack}
 import frontend.checks.types.{LatteType, TypeCollector}
 import frontend.checks.types.LatteType.{TClass, TFunction, TVoid}
@@ -66,11 +66,11 @@ class FunctionAssembler()(
 			// The arguments.
 			mutable.HashMap.from(
 				argsWithTypes.map { (name, anyType) => name ->
-					SymbolSourceInfo(name, None, if anyType != TVoid then Register(anyType, s"%${nameGenerator.nextRegister}") else Undefined(anyType))
+					SymbolSourceInfo(name, None, if anyType != TVoid then Register(anyType, s"%${nameGenerator.nextRegister}") else Constant(anyType, 0))
 				}
 			)
 
-		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.map(_._1), newScope, hostClass, nameGenerator)
+		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
 		assembledFunction.addBlock(Some("entry"))
 
 		symbolStack.addScope(newScope)

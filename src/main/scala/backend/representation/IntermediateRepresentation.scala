@@ -2,6 +2,7 @@ package backend.representation
 
 import backend.generation.*
 import frontend.checks.types.CompilerType
+import frontend.checks.types.LatteType.{TBool, TInt, TVoid}
 
 import scala.annotation.targetName
 import scala.collection.mutable
@@ -62,8 +63,13 @@ sealed trait Value extends Source
 sealed trait DefinedValue extends Value
 sealed trait Name extends Source { def name: String; override def toStringWithoutType: String = name }
 
-case class Undefined(valueType: CompilerType) extends Value { override def toStringWithoutType: String = "???" }
-case class Constant(valueType: CompilerType, value: Long) extends DefinedValue { override def toStringWithoutType: String = value.toString }
+case class Constant(valueType: CompilerType, value: Long) extends DefinedValue {
+	override def toStringWithoutType: String = valueType match {
+		case TInt | TBool => value.toString
+		case TVoid => "voidUnit"
+		case _ => if value == 0 then "null" else value.toString
+	}
+}
 case class Register(valueType: CompilerType, name: String) extends DefinedValue with Name
 case class Label(valueType: CompilerType, name: String) extends Name
 
@@ -76,11 +82,13 @@ sealed trait Instruction {
 // An assignment is an instruction which sets the value of a register.
 sealed trait Assignment extends Instruction {
 	def dst: Register
+	def replaceDst(newDst: Register): Assignment
 }
 
 
 case class Copy(dst: Register, value: DefinedValue) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Copy = if reg == value then copy(value = newValue) else this
+	override def replaceDst(newDst: Register): Copy = copy(dst = newDst)
 }
 
 case class PhiCase(blockName: String, value: DefinedValue) {
@@ -89,16 +97,21 @@ case class PhiCase(blockName: String, value: DefinedValue) {
 
 case class Phi(dst: Register, cases: PhiCase*) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Phi = Phi(dst, cases.map(_.substitute(reg, newValue)): _*)
+	override def replaceDst(newDst: Register): Phi = Phi(newDst, cases: _*)
 }
 
-case class BitcastStringConstant(dst: Register, stringConstant: String) extends Assignment
+case class BitcastStringConstant(dst: Register, stringConstant: String) extends Assignment {
+	override def replaceDst(newDst: Register): BitcastStringConstant = copy(dst = newDst)
+}
 
 case class Bitcast(dst: Register, arg: Register) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue.asInstanceOf[Register]) else this
+	override def replaceDst(newDst: Register): Bitcast = copy(dst = newDst)
 }
 
 case class UnOp(dst: Register, op: UnaryOperator, arg: DefinedValue) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): UnOp = if reg == arg then copy(arg = newValue) else this
+	override def replaceDst(newDst: Register): UnOp = copy(dst = newDst)
 }
 
 case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: DefinedValue) extends Assignment {
@@ -106,6 +119,7 @@ case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: De
 		arg1 = if arg1 == reg then newValue else arg1,
 		arg2 = if arg2 == reg then newValue else arg2
 	)
+	override def replaceDst(newDst: Register): BinOp = copy(dst = newDst)
 }
 
 case class GetElementPtr(dst: Register, ptr: Name, idx: DefinedValue, idxs: DefinedValue*) extends Assignment {
@@ -116,6 +130,7 @@ case class GetElementPtr(dst: Register, ptr: Name, idx: DefinedValue, idxs: Defi
 				if idx == reg then newValue else idx,
 				idxs.map { idx => if idx == reg then newValue else idx }: _*
 			)
+	override def replaceDst(newDst: Register): GetElementPtr = GetElementPtr(newDst, ptr, idx, idxs: _*)
 }
 
 case class Jump(blockName: String) extends Instruction
@@ -133,6 +148,7 @@ case class PtrStore(ptr: Register, arg: DefinedValue) extends Instruction {
 
 case class PtrLoad(dst: Register, ptr: Register) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrLoad = if ptr == reg then copy(ptr = newValue.asInstanceOf[Register]) else this
+	override def replaceDst(newDst: Register): PtrLoad = copy(dst = newDst)
 }
 
 case object ReturnVoid extends Instruction
@@ -154,6 +170,7 @@ case class Call(dst: Register, name: Name, args: Value*) extends Assignment {
 		name,
 		args.map { arg => if arg == reg then newValue else arg }: _*
 	)
+	override def replaceDst(newDst: Register): Call = Call(newDst, name, args: _*)
 }
 
 // Blocks
@@ -163,6 +180,8 @@ class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]
 
 	@targetName("appendOp")
 	def += : Instruction => Unit = instructions.+=
+
+	override def toString: String = name
 }
 
 // Functions
@@ -175,7 +194,7 @@ class Function(
 	val hostClass: Option[String],
 	val nameGenerator: NameGenerator
 ) {
-	private val blocks: mutable.ArrayBuffer[Block] = mutable.ArrayBuffer.empty
+	val blocks: mutable.ArrayBuffer[Block] = mutable.ArrayBuffer.empty
 	private val blockNameToIndex: mutable.HashMap[String, Int] = mutable.HashMap.empty
 
 	private val blockJumpsFrom: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
@@ -189,8 +208,12 @@ class Function(
 		blockJumpsTo.append(mutable.ArrayBuffer.empty)
 		block
 	}
-	
-	def removeBlock(blockIdx: Int): Unit = blocks(blockIdx) = null
+
+	def removeBlock(blockIdx: Int): Unit = {
+		blocks(blockIdx) = null
+		blockJumpsFrom(blockIdx) = mutable.ArrayBuffer.empty
+		blockJumpsTo.mapInPlace(_.filterInPlace(_ != blockIdx))
+	}
 
 	def addJump(blockFrom: Int, blockTo: Int): Unit = {
 		blockJumpsFrom(blockFrom).append(blockTo)

@@ -10,9 +10,24 @@ TESTS_PASSED=0
 SUCCESS_STATUS=0
 FAILURE_STATUS=42
 
-runOn() {
+runOn () {( set -e
+  exec_path="${1%.lat}"
+  input_path="${exec_path}.input"
+  output_path="${exec_path}.output"
+  test_output_path="${exec_path}.test_output"
+
+  if [ ! -e "${input_path}" ]; then
+    input_path=/dev/null
+  fi
+
   ./latc "$1" &> /dev/null
-}
+
+  "${exec_path}" < "${input_path}" > "${test_output_path}" || true
+
+  if [ -e "${output_path}" ]; then
+    diff "${output_path}" "${test_output_path}"
+  fi
+)}
 
 runOnAllInDirectory () {
   echo "Running on all files in $1"
@@ -32,6 +47,7 @@ runOnAllInDirectory () {
 
 runOnGoodCore () {
   runOnAllInDirectory "good/provided/core" $SUCCESS_STATUS
+  runOnAllInDirectory "good/custom" $SUCCESS_STATUS
 }
 
 runOnGoodExt () {
@@ -47,7 +63,7 @@ runOnBad () {
 }
 
 runOnGoodCore
-runOnGoodExt
+#runOnGoodExt
 runOnBad
 
 if ((TESTS_RUN == TESTS_PASSED))

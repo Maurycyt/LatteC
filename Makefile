@@ -9,8 +9,8 @@ all: ${MAIN_CLASSPATH}main.built
 
 ${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala")
 	make build
-	echo -n '#!/bin/bash\n\nDEBUG=false\nif [ "$$2" = "--debug" ]\nthen\n\tDEBUG=true\nfi\n\n' > latc
-	echo "scala ${INCLUDE_CLASSPATH}" 'main "$$1" "$$DEBUG"' >> latc
+	@echo -n '#!/bin/bash\n\nDEBUG=false\nif [ "$$2" = "--debug" ]\nthen\n\tDEBUG=true\nfi\n\n' > latc
+	@echo "scala ${INCLUDE_CLASSPATH}" 'main "$$1" "$$DEBUG"' >> latc
 	cp latc latc_llvm
 	chmod +x latc latc_llvm
 	touch $@
@@ -21,21 +21,28 @@ build: build.sbt
 
 .PHONY: clean-test
 clean-test:
-	find src/test -name '*.ll' -delete
-	find src/test -name '*.bc' -delete
-	find src/test -name '*.s' -delete
-	find src/test -name '*.o' -delete
-	find src/test -type f -executable -delete
+	@echo Cleaning tests.
+	@find src/test -name '*.ll' -delete
+	@find src/test -name '*.bc' -delete
+	@find src/test -name '*.s' -delete
+	@find src/test -name '*.o' -delete
+	@find src/test -name '*.test_output' -delete
+	@find src/test -type f -executable -delete
 
 .PHONY: clean
 clean: clean-test
-	sbt clean
-	rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
-	rm -rf target/ project/target/
+	@echo Cleaning project build files.
+	@sbt clean
+	@rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
+	@rm -rf target/ project/target/
+
+.PHONY: doTest
+doTest: ${MAIN_CLASSPATH}main.built
+	@echo Running tests.
+	@bash test.sh
 
 .PHONY: test
-test: ${MAIN_CLASSPATH}main.built
-	bash test.sh
+test: doTest clean-test
 
 .PHONY: archive
 archive:

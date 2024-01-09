@@ -1,8 +1,8 @@
 package backend.generation
 
-import backend.representation.{Source, Undefined}
+import backend.representation.{Constant, Source}
 import frontend.checks.symbols.SymbolInterface
-import frontend.checks.types.{CompilerType, LatteType}
+import frontend.checks.types.CompilerType
 import frontend.Position
 
 /**
@@ -15,5 +15,9 @@ class SymbolSourceInfo(val symbolName: String, val hostClass: Option[String], va
 	override def declarationPosition: Position = Position(0, 0) // Whatever, we won't be using it. I know, this is *slightly* spaghetti.
 	override def symbolType: CompilerType = source.valueType
 
-	def this(info: SymbolInterface) = this(info.symbolName, None, Undefined(info.symbolType))
+	def this(info: SymbolInterface) = this(info.symbolName, None, Constant(info.symbolType, 0))
+}
+
+object SymbolSourceInfo {
+	def unapply(ssi: SymbolSourceInfo): Option[(String, Option[String], Source)] = Some(ssi.symbolName, ssi.hostClass, ssi.source)
 }

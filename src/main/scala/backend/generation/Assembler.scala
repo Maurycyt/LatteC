@@ -36,7 +36,10 @@ class StatementAssembler()(using
 
 		blockAfter match {
 			case None => (activeBlock, false)
-			case Some(block) => activeBlock += Jump(block.name); (activeBlock, true)
+			case Some(block) =>
+				activeBlock += Jump(block.name)
+				function.addJump(activeBlock.name, block.name)
+				(activeBlock, true)
 		}
 	}
 
@@ -148,7 +151,10 @@ class StatementAssembler()(using
 	}
 
 	override def visitSExp(ctx: LatteParser.SExpContext): (Block, Boolean) = {
-		(ExpressionAssembler()(using blocksAfter = blockAfter.map { b => (b, b) }).visit(ctx.expr)._2, false)
+		considerJumping(
+			ExpressionAssembler()(using blocksAfter = blockAfter.map { b => (b, b) }).visit(ctx.expr)._2,
+			false
+		)
 	}
 }
 
@@ -216,23 +222,25 @@ class ExpressionAssembler(
 
 	private def considerJumping(jumpConditionSource: DefinedValue, activeBlock: Block): (DefinedValue, Block) = {
 		blocksAfter match {
-			case Some((ifTrue, ifFalse)) => jumpConditionSource match {
-				case Constant(TBool, 1)     =>
-					activeBlock += Jump(ifTrue.name)
-					function.addJump(activeBlock.name, ifTrue.name)
-				case Constant(TBool, 0)     =>
-					activeBlock += Jump(ifFalse.name)
-					function.addJump(activeBlock.name, ifFalse.name)
-				case r @ Register(TBool, _) =>
-					if ifTrue.name == ifFalse.name then
-						activeBlock += Jump(ifTrue.name)
-						function.addJump(activeBlock.name, ifTrue.name)
-					else
-						activeBlock += ConditionalJump(jumpConditionSource, ifTrue.name, ifFalse.name)
-						function.addJump(activeBlock.name, ifTrue.name)
-						function.addJump(activeBlock.name, ifFalse.name)
-				case unexpected             =>
-					throw GenerationError(s"Unexpected jump condition case: $unexpected.")
+			case Some((givenIfTrue, givenIfFalse)) =>
+				val (jumpIfTrue, jumpIfFalse) = if !negateBooleans then (givenIfTrue, givenIfFalse) else (givenIfFalse, givenIfTrue)
+				jumpConditionSource match {
+					case Constant(TBool, 1)     =>
+						activeBlock += Jump(jumpIfTrue.name)
+						function.addJump(activeBlock.name, jumpIfTrue.name)
+					case Constant(TBool, 0)     =>
+						activeBlock += Jump(jumpIfFalse.name)
+						function.addJump(activeBlock.name, jumpIfFalse.name)
+					case r @ Register(TBool, _) =>
+						if jumpIfTrue.name == jumpIfFalse.name then
+							activeBlock += Jump(jumpIfTrue.name)
+							function.addJump(activeBlock.name, jumpIfTrue.name)
+						else
+							activeBlock += ConditionalJump(jumpConditionSource, jumpIfTrue.name, jumpIfFalse.name)
+							function.addJump(activeBlock.name, jumpIfTrue.name)
+							function.addJump(activeBlock.name, jumpIfFalse.name)
+					case unexpected             =>
+						throw GenerationError(s"Unexpected jump condition case: $unexpected.")
 			}
 			case None => ()
 		}
@@ -279,8 +287,7 @@ class ExpressionAssembler(
 			}
 		case "!" =>
 			// When taking the negation, introduce negation to the context.
-			val (resultSource, activeBlock) = ExpressionAssembler(!negateBooleans).visit(ctx.expr)
-			considerJumping(resultSource, activeBlock)
+			ExpressionAssembler(!negateBooleans).visit(ctx.expr)
 	}
 
 	override def visitEMulOp(ctx: LatteParser.EMulOpContext): (DefinedValue, Block) = {
@@ -321,17 +328,17 @@ class ExpressionAssembler(
 	}
 
 	override def visitERelOp(ctx: LatteParser.ERelOpContext): (DefinedValue, Block) = {
-		// Compute subexpressions forgetting about boolean negation.
-		val (subExpressionSourceL, activeBlockL) = ExpressionAssembler().visit(ctx.expr(0))
-		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL).visit(ctx.expr(1))
-
 		// Get operation appropriate for the context.
 		val operationToCompute = getOperationToCompute(ctx.relOp.getText)
-
+		
+		// Compute subexpressions forgetting about boolean negation.
+		val (subExpressionSourceL, activeBlockL) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr(0))
+		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL, blocksAfter = None).visit(ctx.expr(1))
+		
 		// Proceed as normal.
 		lazy val resultRegister = Register(TBool, s"%${function.nameGenerator.nextRegister}")
 		val resultSource = (subExpressionSourceL, operationToCompute, subExpressionSourceR) match {
-			case (Constant(TInt, l), op, Constant(TInt, r)) => operateOnTwoIntegers(l, op, r)
+			case (Constant(tl, l), op, Constant(tr, r)) if tl == tr && Seq(TInt, TBool, TVoid).contains(tl) => operateOnTwoIntegers(l, op, r)
 			case (l: DefinedValue, op, r: DefinedValue) if l.valueType == TInt && r.valueType == TInt =>
 				thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
 				resultRegister
@@ -363,19 +370,22 @@ class ExpressionAssembler(
 		val (blockIfTrue, blockIfFalse, blockRight, blockWithResult) = blocksAfter match {
 			case None =>
 				// If there are no blocks given, then create your own block to save the result.
+				val rightBlock = function.addBlock()
 				val resultBlock = function.addBlock()
-				(resultBlock, resultBlock, function.addBlock(), Some(resultBlock))
+				(resultBlock, resultBlock, rightBlock, Some(resultBlock))
 			case Some(ifTrue, ifFalse) =>
 				// If blocks were given, then do not save the result, but jump to those given blocks instead.
-				(ifTrue, ifFalse, function.addBlock(), None)
+				val rightBlock = function.addBlock()
+				(ifTrue, ifFalse, rightBlock, None)
 		}
 
 		// Assemble the subexpressions. Propagate boolean negation.
-		val (_, activeBlockL) = op match {
+		val (subExpressionSourceL, activeBlockL) = op match {
 			case LazyOp.And => ExpressionAssembler(negateBooleans)(using blocksAfter = Some(blockRight, blockIfFalse)).visit(lCtx)
 			case LazyOp.Or => ExpressionAssembler(negateBooleans)(using blocksAfter = Some(blockIfTrue, blockRight)).visit(lCtx)
 		}
-		val (subExpressionSourceR, activeBlockR) = ExpressionAssembler(negateBooleans)(using blocksAfter = Some(blockIfTrue, blockIfFalse)).visit(rCtx)
+		val (subExpressionSourceR, activeBlockR) =
+			ExpressionAssembler(negateBooleans)(using thisBlock = blockRight, blocksAfter = Some(blockIfTrue, blockIfFalse)).visit(rCtx)
 
 		// If the result was to be saved in a register, do it in a new block with Phi.
 		// Otherwise, jumping was expected, and was already handled in the other blocks.
@@ -390,7 +400,7 @@ class ExpressionAssembler(
 					.map(function.getBlockName)
 					.filterNot(_ == activeBlockR.name)
 					.map(blockName => PhiCase(blockName, Constant(TBool, op match { case LazyOp.And => 0; case LazyOp.Or => 1 })))
-					.prepended(PhiCase(activeBlockR.name, subExpressionSourceR))
+					.appended(PhiCase(activeBlockR.name, subExpressionSourceR))
 				// Obtain the result with Phi.
 				activeBlock += Phi(resultSource, phiCases: _*)
 				(resultSource, activeBlock)
@@ -398,16 +408,22 @@ class ExpressionAssembler(
 	}
 
 	override def visitEVal(ctx: LatteParser.EValContext): (DefinedValue, Block) = {
-		ValueAssembler().visitForAccess(ctx).asInstanceOf[(DefinedValue, Block)]
+		val (resultSource, activeBlock) = ValueAssembler().visitForAccess(ctx).asInstanceOf[(DefinedValue, Block)]
+		if resultSource.valueType == TBool then
+			considerJumping(resultSource, activeBlock)
+		else
+			(resultSource, activeBlock)
 	}
 
 	override def visitEInt(ctx: LatteParser.EIntContext): (DefinedValue, Block) = {
 		(Constant(TInt, Integer.parseInt(ctx.INT.getText)), thisBlock)
 	}
 
-	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) = (Constant(TBool, 1), thisBlock)
+	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) = 
+		considerJumping(Constant(TBool, if negateBooleans then 0 else 1), thisBlock)
 
-	override def visitEFalse(ctx: LatteParser.EFalseContext): (DefinedValue, Block) = (Constant(TBool, 0), thisBlock)
+	override def visitEFalse(ctx: LatteParser.EFalseContext): (DefinedValue, Block) =
+		considerJumping(Constant(TBool, if negateBooleans then 1 else 0), thisBlock)
 
 	override def visitEStr(ctx: LatteParser.EStrContext): (DefinedValue, Block) = {
 		val resultSource = Register(TStr, s"%${function.nameGenerator.nextRegister}")
@@ -437,13 +453,13 @@ class ExpressionAssembler(
 	override def visitEFunCall(ctx: LatteParser.EFunCallContext): (DefinedValue, Block) = {
 		val (functionPtr, activeBlockF) = ValueAssembler().visitForAccess(ctx.value).asInstanceOf[(Name, Block)]
 		var activeBlock = activeBlockF
-		val exprs = if ctx.expr == null then Seq.empty[LatteParser.ExprContext] else ctx.expr.asScala.toSeq
+		val exprs: Seq[LatteParser.ExprContext] = if ctx.expr == null then Seq.empty[LatteParser.ExprContext] else ctx.expr.asScala.toSeq
 
-		val exprSources = exprs.map { expr =>
-			val (exprSource, activeBlockE) = ExpressionAssembler().visit(expr)
+		val exprSources: Seq[DefinedValue] = exprs.map { expr =>
+			val (exprSource, activeBlockE) = ExpressionAssembler()(using blocksAfter = None).visit(expr)
 			activeBlock = activeBlockE
 			exprSource
-		}
+		}.filterNot(_.valueType == TVoid)
 
 		functionPtr.valueType.asInstanceOf[TFunction] match {
 			case TFunction(_, TVoid) =>
@@ -452,7 +468,10 @@ class ExpressionAssembler(
 			case TFunction(_, returnType) =>
 				val resultSource = Register(returnType, s"%${function.nameGenerator.nextRegister}")
 				activeBlock += Call(resultSource, functionPtr, exprSources: _*)
-				(resultSource, activeBlock)
+				if returnType == TBool then
+					considerJumping(resultSource, activeBlock)
+				else
+					(resultSource, activeBlock)
 		}
 	}
 

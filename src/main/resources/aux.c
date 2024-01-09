@@ -9,7 +9,12 @@ void printInt(int64_t value) {
 
 int64_t readInt() {
     int64_t result;
+    void * line = NULL;
+    size_t size;
+
     scanf("%ld", &result);
+    getline((char * *)&line, &size, stdin);
+    free(line);
     return result;
 }
 

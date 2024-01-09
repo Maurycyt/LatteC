@@ -44,7 +44,7 @@ class Transcriber(
 
 	private def transcribeInstruction(instr: Instruction): String = {
 		instr match
-			case Phi(dst, cases*) => s"$dst = phi ${dst.valueType.toLLVM} ${cases.map { phiCase => s"[ ${phiCase.value}, ${phiCase.blockName} ]"}.mkString(", ")}"
+			case Phi(dst, cases*) => s"$dst = phi ${dst.valueType.toLLVM} ${cases.map { phiCase => s"[ ${phiCase.value}, %${phiCase.blockName} ]"}.mkString(", ")}"
 			case BitcastStringConstant(dst, stringConstant) => s"$dst = bitcast [${stringMapping(stringConstant)._1} x i8]* ${stringMapping(stringConstant)._2} to ${dst.valueType.toLLVM}"
 			case Bitcast(dst, arg) => s"$dst = bitcast ${arg.valueType.toLLVM} $arg to ${dst.valueType.toLLVM}"
 			case UnOp(dst, op, arg) => s"$dst = sub i${op match { case Inv => "64 0"; case Neg => "1 0" }}, $arg"
@@ -53,7 +53,7 @@ class Transcriber(
 				case Minus => s"sub i64 $arg1, $arg2"
 				case Mul => s"mul i64 $arg1, $arg2"
 				case Div => s"sdiv i64 $arg1, $arg2"
-				case Mod => s"sdiv i64 $arg1, $arg2"
+				case Mod => s"srem i64 $arg1, $arg2"
 				case Eq => s"icmp eq ${arg1.valueType.toLLVM} $arg1, $arg2"
 				case Ne => s"icmp ne ${arg1.valueType.toLLVM} $arg1, $arg2"
 				case Lt => s"icmp slt ${arg1.valueType.toLLVM} $arg1, $arg2"
