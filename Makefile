@@ -7,7 +7,12 @@ ARCHIVE_NAME=mw429680
 
 all: ${MAIN_CLASSPATH}main.built
 
-${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala")
+src/main/resources/aux.bc: src/main/resources/aux.c
+	@clang src/main/resources/aux.c -S -emit-llvm -o src/main/resources/aux.ll
+	@llvm-as src/main/resources/aux.ll -o src/main/resources/aux.bc
+	@rm src/main/resources/aux.ll
+
+${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala") src/main/resources/aux.bc
 	make build
 	@echo -n '#!/bin/bash\n\nDEBUG=false\nif [ "$$2" = "--debug" ]\nthen\n\tDEBUG=true\nfi\n\n' > latc
 	@echo "scala ${INCLUDE_CLASSPATH}" 'main "$$1" "$$DEBUG"' >> latc
@@ -35,6 +40,7 @@ clean: clean-test
 	@sbt clean
 	@rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
 	@rm -rf target/ project/target/
+	@rm -rf src/main/resources/aux.ll
 
 .PHONY: doTest
 doTest: ${MAIN_CLASSPATH}main.built

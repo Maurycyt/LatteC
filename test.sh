@@ -12,6 +12,7 @@ FAILURE_STATUS=42
 
 runOn () {( set -e
   exec_path="${1%.lat}"
+  bc_path="${exec_path}.bc"
   input_path="${exec_path}.input"
   output_path="${exec_path}.output"
   test_output_path="${exec_path}.test_output"
@@ -22,7 +23,7 @@ runOn () {( set -e
 
   ./latc "$1" &> /dev/null
 
-  "${exec_path}" < "${input_path}" > "${test_output_path}" || true
+  lli "${bc_path}" < "${input_path}" > "${test_output_path}" || true
 
   if [ -e "${output_path}" ]; then
     diff "${output_path}" "${test_output_path}"

@@ -396,7 +396,7 @@ class ExpressionAssembler()(
 	}
 
 	override def visitEInt(ctx: LatteParser.EIntContext): (DefinedValue, Block) = {
-		(Constant(TInt, Integer.parseInt(ctx.INT.getText)), thisBlock)
+		(Constant(TInt, ctx.INT.getText.toLong), thisBlock)
 	}
 
 	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) = 

@@ -1,0 +1,4 @@
+int main() {
+    printInt(1234567890123);
+    return 0;
+}

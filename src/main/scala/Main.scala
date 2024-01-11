@@ -90,11 +90,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Finally, compile.
 		Process(Seq("llvm-as", getPath("ll").toString, "-o", getPath("bc").toString)).!!
-		Process(Seq("llc", getPath("bc").toString, "-o", getPath("s").toString)).!!
-		Process(Seq("as", getPath("s").toString, "-o", getPath("o").toString)).!!
-		Process(Seq("clang", "src/main/resources/aux.c", "-c", "-o", "src/main/resources/aux.o")).!!
-		Process(Seq("clang", "-no-pie", "src/main/resources/aux.o", getPath("o").toString, "-o", inputFilePath.resolveSibling(inputFileBaseName).toString)).!!
-		if !debug.flag then Process(Seq("rm", getPath("ll").toString, getPath("bc").toString, getPath("s").toString, getPath("o").toString)).!!
+		Process(Seq("llvm-link", getPath("bc").toString, "src/main/resources/aux.bc", "-o", getPath("bc").toString)).!!
 
 	} catch {
 
