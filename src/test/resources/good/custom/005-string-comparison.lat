@@ -1,0 +1,16 @@
+void printBool(boolean b) {
+    if (b) printInt(1);
+    else printInt(0);
+}
+
+int main() {
+    string a = readString();
+    string b = readString();
+    string c = readString();
+
+    printBool(a + b == c);
+    printBool(a + c == b);
+    printBool(b + c == a);
+
+    return 0;
+}

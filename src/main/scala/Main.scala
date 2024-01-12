@@ -1,4 +1,4 @@
-import backend.generation.{ClassRepresentationBuilder, FunctionAssembler, NamingConvention, PreambleGenerator, Normaliser, StringConstantGenerator, SymbolSourceInfo}
+import backend.generation.*
 import backend.representation.{Function, Label}
 import backend.transcription.Transcriber
 import frontend.{FrontendError, Position}

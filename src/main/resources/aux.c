@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 void printInt(int64_t value) {
     printf("%ld\n", value);
@@ -47,4 +48,8 @@ void * concatenateStrings(void * str1, void * str2) {
     strcpy(result, str1);
     strcat(result, str2);
     return result;
+}
+
+bool compareStrings(void * str1, void * str2) {
+    return strcmp(str1, str2) == 0;
 }

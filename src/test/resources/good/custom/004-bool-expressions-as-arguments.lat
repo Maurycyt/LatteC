@@ -1,0 +1,33 @@
+void printBool(boolean b) {
+ if(b)
+   printInt(1111);
+ else
+   printInt(2222);
+ return;
+}
+
+int main () {
+ int x;
+ int y;
+ int z;
+ boolean b;
+
+ x=readInt();
+ y=readInt();
+ z=readInt();
+
+ printInt(1111111);
+
+ b = (y >= x || (77777 != x && 88888 < x));
+
+ printInt(22222222);
+
+ printBool(33333 >= x && (y != 22222 || z < 44444));
+
+ printInt(33333333);
+
+ printBool(b);
+
+ return 0 ;
+
+}

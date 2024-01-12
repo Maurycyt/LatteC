@@ -339,7 +339,10 @@ class ExpressionAssembler()(
 				thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
 				resultRegister
 			case (l: DefinedValue, op, r: DefinedValue) if Seq("==", "!=").contains(op) && l.valueType == r.valueType =>
-				thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
+				if l.valueType == TStr then
+					thisBlock += Call(resultRegister, Label(TFunction(Seq(TStr, TStr), TBool), "@compareStrings"), l, r)
+				else
+					thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
 				resultRegister
 			case unexpected => throw GenerationError(s"Unexpected ERelOp case: $unexpected.")
 		}
@@ -380,7 +383,9 @@ class ExpressionAssembler()(
 				(subExpressionSourceR, activeBlockR)
 			case Some(activeBlock) =>
 				blockIfTrue += Jump(activeBlock.name)
+				function.addJump(blockIfTrue.name, activeBlock.name)
 				blockIfFalse += Jump(activeBlock.name)
+				function.addJump(blockIfFalse.name, activeBlock.name)
 				val resultSource = Register(TBool, s"%${function.nameGenerator.nextRegister}")
 				activeBlock += Phi(resultSource, PhiCase(blockIfTrue.name, Constant(TBool, 1)), PhiCase(blockIfFalse.name, Constant(TBool, 0)))
 				(resultSource, activeBlock)
