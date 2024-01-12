@@ -18,6 +18,12 @@ jobs:
           curl -s "https://get.sdkman.io" | bash
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install scala
+      - name: Add llvm-as to PATH
+        run: |
+          echo "/usr/lib/llvm-14/bin" >> $GITHUB_PATH
+      - name: Check llvm-as availability
+        run: |
+          llvm-as --version
       - name: Run `make test`
         run: |
           export SDKMAN_DIR="$HOME/.sdkman"

@@ -71,9 +71,9 @@ runOnBad
 
 if ((TESTS_RUN == TESTS_PASSED))
 then
-  echo -e "\n${GREEN}--------------------\nALL ${TESTS_RUN} TESTS PASSED!\n--------------------${NC}\n"
+  echo -e "\n${GREEN}--------------------\n${GREEN}ALL ${TESTS_RUN} TESTS PASSED!\n${GREEN}--------------------${NC}\n"
   exit 0
 else
-  echo -e "\n${RED}---------------------------------\nTHERE WERE ERRORS! ($((TESTS_RUN - TESTS_PASSED)) OUT OF ${TESTS_RUN})\n---------------------------------${NC}\n"
+  echo -e "\n${RED}---------------------------------\n${RED}THERE WERE ERRORS! ($((TESTS_RUN - TESTS_PASSED)) OUT OF ${TESTS_RUN})\n${RED}---------------------------------${NC}\n"
   exit 1
 fi
