@@ -1,6 +1,6 @@
 package backend.generation
 
-import frontend.checks.types.CompilerType.AnyPointer
+import frontend.checks.types.CompilerType.CTAnyPointer
 import frontend.checks.types.LatteType.{TBool, TInt, TStr, TVoid}
 
 import java.io.FileWriter
@@ -17,8 +17,8 @@ object PreambleGenerator {
 				 |declare ${TStr.toLLVM} @concatenateStrings(${TStr.toLLVM}, ${TStr.toLLVM})
 				 |declare ${TBool.toLLVM} @compareStrings(${TStr.toLLVM}, ${TStr.toLLVM})
 				 |
-				 |declare ${AnyPointer.toLLVM} @malloc(${TInt.toLLVM})
-				 |declare ${TVoid.toLLVM} @free(${AnyPointer.toLLVM})
+				 |declare ${CTAnyPointer.toLLVM} @calloc(${TInt.toLLVM}, ${TInt.toLLVM})
+				 |declare ${TVoid.toLLVM} @free(${CTAnyPointer.toLLVM})
 				 |
 				 |define i32 @main() {
 				 |\t%result64 = call ${TInt.toLLVM} ${NamingConvention.function("main")}()

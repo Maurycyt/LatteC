@@ -13,7 +13,6 @@ class Normaliser()(using function: Function) {
 		transformIntoSSA()
 		findAndRemoveCopies()
 		manageUnterminatedBlocks()
-//		removeUnreachableBlocks()
 	}
 
 	private def transformIntoSSA(): Unit = {
@@ -150,19 +149,6 @@ class Normaliser()(using function: Function) {
 					case TVoid => block += ReturnVoid
 					case _ => block += Jump(block.name)
 				}
-		}
-	}
-
-	private def removeUnreachableBlocks(): Unit = {
-		var stop = false
-		while !stop do {
-			var nothingChanged = true
-			for (blockIdx <- 1 until function.blocks.length) {
-				if function.blocks(blockIdx) != null && function.getBlockJumpsTo(blockIdx).isEmpty then
-					function.removeBlock(blockIdx)
-					nothingChanged = false
-			}
-			if nothingChanged then stop = true
 		}
 	}
 }

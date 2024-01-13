@@ -1,0 +1,17 @@
+int main () {
+    int [] arr = new int [10];
+    int idx = 0;
+    while (idx < arr.length) {
+        arr[idx] = 10 - idx;
+        idx++;
+    }
+
+    for (int v : arr) {
+        printInt(v);
+        return 0;
+    }
+
+    printString("NOOO");
+
+    return 0;
+}

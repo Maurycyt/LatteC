@@ -1,7 +1,8 @@
 package backend.transcription
 
 import backend.representation.*
-import frontend.checks.types.CompilerType.PointerTo
+import frontend.checks.types.CompilerType.{CTAnyPointer, CTPointerTo}
+import frontend.checks.types.LatteType.TArray
 
 import java.io.FileWriter
 
@@ -65,7 +66,14 @@ class Transcriber(
 			)
 			case GetElementPtr(dst, ptr, idx, idxs*) =>
 				val idxArgs = idxs.prepended(idx).map { case c: Constant if Int.MinValue <= c.value && c.value <= Int.MaxValue => s"i32 $c"; case other => s"i64 $other" }.mkString(", ")
-				s"$dst = getelementptr ${ptr.valueType.asInstanceOf[PointerTo].underlying.toLLVM}, ${ptr.valueType.toLLVM} $ptr, $idxArgs"
+				ptr.valueType match {
+					case pt @ CTPointerTo(underlying) => s"$dst = getelementptr ${underlying.toLLVM}, ${pt.toLLVM} $ptr, $idxArgs"
+					case ap @ CTAnyPointer => s"$dst = getelementptr i8, ${ap.toLLVM} $ptr, $idxArgs"
+					case ar @ TArray(underlying) => s"$dst = getelementptr ${underlying.toLLVM}, ${ar.toLLVM} $ptr, $idxArgs"
+					case _ => throw new RuntimeException(s"Cannot get element pointer from value of type ${ptr.valueType}.")
+				}
+
+			case PtrToInt(dst, ptr) => s"$dst = ptrtoint ${ptr.toStringWithType} to ${dst.valueType.toLLVM}"
 			case Jump(blockName) => s"br label %$blockName"
 			case ConditionalJump(arg, blockNameTrue, blockNameFalse) => s"br i1 $arg, label %$blockNameTrue, label %$blockNameFalse"
 			case PtrStore(ptr, arg) => s"store ${arg.toStringWithType}, ${ptr.toStringWithType}"

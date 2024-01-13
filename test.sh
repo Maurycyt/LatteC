@@ -53,9 +53,9 @@ runOnGoodCore () {
 
 runOnGoodExt () {
   runOnAllInDirectory "good/provided/extensions/arrays1" $SUCCESS_STATUS
-  runOnAllInDirectory "good/provided/extensions/struct" $SUCCESS_STATUS
-  runOnAllInDirectory "good/provided/extensions/objects1" $SUCCESS_STATUS
-  runOnAllInDirectory "good/provided/extensions/objects2" $SUCCESS_STATUS
+#  runOnAllInDirectory "good/provided/extensions/struct" $SUCCESS_STATUS
+#  runOnAllInDirectory "good/provided/extensions/objects1" $SUCCESS_STATUS
+#  runOnAllInDirectory "good/provided/extensions/objects2" $SUCCESS_STATUS
 }
 
 runOnBad () {
@@ -64,7 +64,7 @@ runOnBad () {
 }
 
 runOnGoodCore
-#runOnGoodExt
+runOnGoodExt
 runOnBad
 #runOnAllInDirectory "../../../../mimuw-mrjp-tests/good" $SUCCESS_STATUS
 #runOnAllInDirectory "../../../../mimuw-mrjp-tests/bad" $FAILURE_STATUS

@@ -1,15 +1,17 @@
 package backend.generation
 
+import backend.generation.ValueAssembler.assembleArrayAccess
 import backend.representation.*
 import frontend.checks.symbols.{ClassTable, MemberInfo, SymbolStack}
 import frontend.checks.types.LatteType
 import frontend.checks.types.LatteType.*
 import frontend.Position
-import frontend.checks.types.CompilerType.{FunctionPointer, PointerTo}
+import frontend.checks.types.CompilerType.{CTAnyPointer, CTFunction, CTFunctionPointer, CTPointerTo}
 import frontend.checks.types.TypeCollector
 import grammar.{LatteBaseVisitor, LatteParser}
 import org.antlr.v4.runtime.tree.ParseTree
 
+import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
 
 case class GenerationError(message: String) extends Error
@@ -67,16 +69,17 @@ class StatementAssembler()(using
 	}
 
 	override def visitSAss(ctx: LatteParser.SAssContext): (Block, Boolean) = {
-		val (valueSource, writable, activeBlockV) = ValueAssembler().visit(ctx.value).asInstanceOf[(Register, Boolean, Block)]
+		val (valueSource, writable, activeBlockV) = ValueAssembler().visit(ctx.value).asInstanceOf[(DefinedValue, Boolean, Block)]
 		val (exprSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
 
 		// If it is writable, then we have a pointer.
-		// If it is not writable, then we must be dealing with a local variable.
-		if writable then
-			activeBlock += PtrStore(valueSource, exprSource)
-		else
-			activeBlock += Copy(valueSource, exprSource)
-
+		// If it is not writable, then we must be dealing with a local variable or void.
+		if writable then {
+			activeBlock += PtrStore(valueSource.asInstanceOf[Register], exprSource)
+		} else {
+			if valueSource.valueType != TVoid then
+				activeBlock += Copy(valueSource.asInstanceOf[Register], exprSource)
+		}
 		considerJumping(activeBlock, false)
 	}
 
@@ -152,7 +155,49 @@ class StatementAssembler()(using
 	}
 
 	override def visitSFor(ctx: LatteParser.SForContext): (Block, Boolean) = {
-		???
+		// Construct the preamble, which is taking the source of the array and its length.
+		val iteratorName: String = ctx.ID.getText
+		val iteratorType: LatteType = TypeCollector(using classTable.keys.toSet).visit(ctx.basicType)
+		val (arraySource, activeBlock) = ValueAssembler().visitForRead(ctx.expr).asInstanceOf[(Register, Block)]
+		val arrayLengthSource = ValueAssembler.assembleArrayLength(arraySource, activeBlock)
+
+		val blockCond = function.addBlock()
+		val blockStmt = function.addBlock()
+		val blockAfterLoop = function.addBlock()
+
+		activeBlock += Jump(blockCond.name)
+		function.addJump(activeBlock.name, blockCond.name)
+
+		// Construct the index registers.
+		// Wait for the statement block to be ready before constructing condition block in order to determine phi arguments.
+		val indexRegister = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+		val nextIndexRegister = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+
+		// Construct the loop body block.
+		val iteratorValue = ValueAssembler.assembleArrayRead(arraySource, indexRegister, blockStmt)
+		symbolStack.addScope(mutable.HashMap(iteratorName -> SymbolSourceInfo(iteratorName, None, iteratorValue)))
+		val (blockStmtLast, brokeFlow) = StatementAssembler()(using thisBlock = blockStmt, blockAfter = None).visit(ctx.stmt)
+		symbolStack.removeScope()
+		if !brokeFlow then {
+			blockStmtLast += Jump(blockCond.name)
+			function.addJump(blockStmtLast.name, blockCond.name)
+		}
+
+		// Now we can construct a phi instruction for the index register.
+		blockCond += (if !brokeFlow then
+			Phi(indexRegister, PhiCase(activeBlock.name, Constant(TInt, 0)), PhiCase(blockStmtLast.name, nextIndexRegister))
+		else
+			Copy(indexRegister, Constant(TInt, 0))
+		)
+		blockCond += BinOp(nextIndexRegister, indexRegister, Plus, Constant(TInt, 1))
+		val comparisonRegister = Register(TBool, s"%${function.nameGenerator.nextRegister}")
+		blockCond += BinOp(comparisonRegister, indexRegister, Lt, arrayLengthSource)
+		blockCond += ConditionalJump(comparisonRegister, blockStmt.name, blockAfterLoop.name)
+		function.addJump(blockCond.name, blockStmt.name)
+		function.addJump(blockCond.name, blockAfterLoop.name)
+
+		// Phew
+		considerJumping(blockAfterLoop, brokeFlow)
 	}
 
 	override def visitSExp(ctx: LatteParser.SExpContext): (Block, Boolean) = {
@@ -326,11 +371,11 @@ class ExpressionAssembler()(
 	override def visitERelOp(ctx: LatteParser.ERelOpContext): (DefinedValue, Block) = {
 		// Get operation appropriate for the context.
 		val operationToCompute = ctx.relOp.getText
-		
+
 		// Compute subexpressions forgetting about boolean negation.
 		val (subExpressionSourceL, activeBlockL) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr(0))
 		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL, blocksAfter = None).visit(ctx.expr(1))
-		
+
 		// Proceed as normal.
 		lazy val resultRegister = Register(TBool, s"%${function.nameGenerator.nextRegister}")
 		val resultSource = (subExpressionSourceL, operationToCompute, subExpressionSourceR) match {
@@ -393,7 +438,7 @@ class ExpressionAssembler()(
 	}
 
 	override def visitEVal(ctx: LatteParser.EValContext): (DefinedValue, Block) = {
-		val (resultSource, activeBlock) = ValueAssembler().visitForAccess(ctx).asInstanceOf[(DefinedValue, Block)]
+		val (resultSource, activeBlock) = ValueAssembler().visitForRead(ctx).asInstanceOf[(DefinedValue, Block)]
 		if resultSource.valueType == TBool then
 			considerJumping(resultSource, activeBlock)
 		else
@@ -404,7 +449,7 @@ class ExpressionAssembler()(
 		(Constant(TInt, ctx.INT.getText.toLong), thisBlock)
 	}
 
-	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) = 
+	override def visitETrue(ctx: LatteParser.ETrueContext): (DefinedValue, Block) =
 		considerJumping(Constant(TBool, 1), thisBlock)
 
 	override def visitEFalse(ctx: LatteParser.EFalseContext): (DefinedValue, Block) =
@@ -418,8 +463,12 @@ class ExpressionAssembler()(
 
 	override def visitENew(ctx: LatteParser.ENewContext): (DefinedValue, Block) = {
 		val className = ctx.basicType.getText
-		val allocSource = Register(TStr, s"%${function.nameGenerator.nextRegister}")
-		thisBlock += Call(allocSource, Label(TFunction(Seq(TInt), TStr), "@malloc"))
+		val sizePtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
+		thisBlock += GetElementPtr(sizePtr, Constant(TClass(className), 0), Constant(TInt, 1))
+		val sizeInt = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+		thisBlock += PtrToInt(sizeInt, sizePtr)
+		val allocSource = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+		thisBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), Constant(TInt, 1), sizeInt)
 		val classPtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
 		thisBlock += Bitcast(classPtr, allocSource)
 		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)))
@@ -427,7 +476,35 @@ class ExpressionAssembler()(
 	}
 
 	override def visitENewArr(ctx: LatteParser.ENewArrContext): (DefinedValue, Block) = {
-		???
+		// Collect info about the new array.
+		val (arraySizeValue, activeBlock) = visit(ctx.expr)
+		val underlyingType = TypeCollector(using classTable.keys.toSet).visit(ctx.basicType).asInstanceOf[TNonFun]
+
+		val sizeToCalloc = underlyingType match {
+			case TVoid =>
+				// Only 8 bytes for the length.
+				Constant(TInt, 8)
+			case _ =>
+				// Each element of an array takes up 8 bytes.
+				val r1 = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += BinOp(r1, arraySizeValue, Mul, Constant(TInt, 8))
+				// Add 8 bytes for the length.
+				val r2 = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += BinOp(r2, r1, Plus, Constant(TInt, 8))
+				r2
+		}
+		val allocSource = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+		activeBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), sizeToCalloc, Constant(TInt, 8))
+
+		// Initiate the array size, offset the array pointer and return it.
+		val arraySizePtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
+		activeBlock += Bitcast(arraySizePtr, allocSource)
+		activeBlock += PtrStore(arraySizePtr, arraySizeValue)
+		val ptrValueToReturn = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+		activeBlock += GetElementPtr(ptrValueToReturn, allocSource, Constant(TInt, 8))
+		val ptrRegisterToReturn = Register(TArray(underlyingType), s"%${function.nameGenerator.nextRegister}")
+		activeBlock += Bitcast(ptrRegisterToReturn, ptrValueToReturn)
+		(ptrRegisterToReturn, activeBlock)
 	}
 
 	override def visitENull(ctx: LatteParser.ENullContext): (DefinedValue, Block) = {
@@ -436,7 +513,7 @@ class ExpressionAssembler()(
 	}
 
 	override def visitEFunCall(ctx: LatteParser.EFunCallContext): (DefinedValue, Block) = {
-		val (functionPtr, activeBlockF) = ValueAssembler().visitForAccess(ctx.value).asInstanceOf[(Name, Block)]
+		val (functionPtr, activeBlockF) = ValueAssembler().visitForRead(ctx.value).asInstanceOf[(Name, Block)]
 		var activeBlock = activeBlockF
 		val exprs: Seq[LatteParser.ExprContext] = if ctx.expr == null then Seq.empty[LatteParser.ExprContext] else ctx.expr.asScala.toSeq
 
@@ -493,12 +570,12 @@ class ValueAssembler(
 	 * @param ctx The value to visit
 	 * @return The read-only value.
 	 */
-	def visitForAccess(ctx: ParseTree): (Source, Block) = {
+	def visitForRead(ctx: ParseTree): (Source, Block) = {
 		val (sourceMaybePtr, writable, activeBlock) = visit(ctx)
 		if writable then
-			val underlyingType = sourceMaybePtr.valueType.asInstanceOf[PointerTo].underlying
+			val underlyingType = sourceMaybePtr.valueType.asInstanceOf[CTPointerTo].underlying
 			val sourceRegister = Register(underlyingType, s"%${function.nameGenerator.nextRegister}")
-			activeBlock += Bitcast(sourceRegister, sourceMaybePtr.asInstanceOf[Register])
+			activeBlock += PtrLoad(sourceRegister, sourceMaybePtr.asInstanceOf[Register])
 			(sourceRegister, activeBlock)
 		else
 			(sourceMaybePtr, activeBlock)
@@ -506,45 +583,87 @@ class ValueAssembler(
 
 	override def visitVMem(ctx: LatteParser.VMemContext): (Register, Boolean, Block) = {
 		// Get the source of the object owning the member.
-		val (objectSource, activeBlock) = visitForAccess(ctx.value).asInstanceOf[(Register, Block)]
+		val (entitySource, activeBlock) = visitForRead(ctx.value).asInstanceOf[(Register, Block)]
 
-		// Get the source of the member.
-		val TClass(className) = objectSource.valueType.asInstanceOf[TClass]
-		// TODO: array.length
-		val MemberInfo(_, _, memberType, _, offset) = classTable(className).memberTable.apply(ctx.ID.getText)
-		memberType match {
-			case functionType: TFunction =>
-				// If it's a function, it cannot be written to, so return function pointer.
-				val objectSourcePtr = Register(PointerTo(PointerTo(FunctionPointer)), s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(objectSourcePtr, objectSource)
-				val vTablePtr = Register(PointerTo(FunctionPointer), s"%${function.nameGenerator.nextRegister}")
-				activeBlock += PtrLoad(vTablePtr, objectSourcePtr)
-				val functionPtrPtr = Register(PointerTo(FunctionPointer), s"%${function.nameGenerator.nextRegister}")
-				activeBlock += GetElementPtr(functionPtrPtr, vTablePtr, Constant(TInt, offset))
-				val functionPtr = Register(FunctionPointer, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += PtrLoad(functionPtr, functionPtrPtr)
-				val functionPtrTyped = Register(memberType, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(functionPtrTyped, functionPtr)
-				(functionPtrTyped, false, activeBlock)
-			case nonFunctionType =>
-				// A field can be written to, so return pointer to it.
-				val memberPointer = Register(PointerTo(memberType), s"%${function.nameGenerator.nextRegister}")
-				activeBlock += GetElementPtr(memberPointer, objectSource, Constant(TInt, 0), Constant(TInt, offset))
-				(memberPointer, true, activeBlock)
+		entitySource.valueType match {
+			case TClass(className) =>
+				// Get the source of the member.
+				val MemberInfo(_, _, memberType, _, offset) = classTable(className).memberTable.apply(ctx.ID.getText)
+				memberType match {
+					case functionType: TFunction =>
+						// If it's a function, it cannot be written to, so return function pointer.
+						val objectSourcePtr = Register(CTPointerTo(CTPointerTo(CTFunctionPointer)), s"%${function.nameGenerator.nextRegister}")
+						activeBlock += Bitcast(objectSourcePtr, entitySource)
+						val vTablePtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
+						activeBlock += PtrLoad(vTablePtr, objectSourcePtr)
+						val functionPtrPtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
+						activeBlock += GetElementPtr(functionPtrPtr, vTablePtr, Constant(TInt, offset))
+						val functionPtr = Register(CTFunctionPointer, s"%${function.nameGenerator.nextRegister}")
+						activeBlock += PtrLoad(functionPtr, functionPtrPtr)
+						val functionPtrTyped = Register(memberType, s"%${function.nameGenerator.nextRegister}")
+						activeBlock += Bitcast(functionPtrTyped, functionPtr)
+						(functionPtrTyped, false, activeBlock)
+					case nonFunctionType =>
+						// A field can be written to, so return pointer to it.
+						val memberPointer = Register(CTPointerTo(memberType), s"%${function.nameGenerator.nextRegister}")
+						activeBlock += GetElementPtr(memberPointer, entitySource, Constant(TInt, 0), Constant(TInt, offset))
+						(memberPointer, true, activeBlock)
+				}
+			case TArray(underlying) =>
+				// The only member of an array is its length.
+				val arrayLengthSource = ValueAssembler.assembleArrayLength(entitySource, activeBlock)
+				(arrayLengthSource, false, activeBlock)
+			case _ => throw new RuntimeException("Unexpected host entity of member value.")
 		}
 	}
 
-	override def visitVArr(ctx: LatteParser.VArrContext): (Register, Boolean, Block) = {
+	override def visitVArr(ctx: LatteParser.VArrContext): (DefinedValue, Boolean, Block) = {
 		// Get the source of the array containing the member.
-		val (arraySource, activeBlockA) = visitForAccess(ctx.value).asInstanceOf[(Register, Block)]
-
+		val (arraySource, activeBlockA) = visitForRead(ctx.value).asInstanceOf[(Register, Block)]
 		// Get the source of the index.
 		val (indexSource, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockA, blocksAfter = None).visit(ctx.expr)
-
 		// Get the source of the element.
+		// canWrite is false only for void.
+		val (resultSource, canWrite) = ValueAssembler.assembleArrayAccess(arraySource, indexSource, activeBlock)
+		(resultSource, canWrite, activeBlock)
+	}
+}
+
+object ValueAssembler {
+	def assembleArrayAccess(arraySource: Register, indexSource: DefinedValue, block: Block)(using function: Function): (DefinedValue, Boolean) = {
 		val underlyingType = arraySource.valueType.asInstanceOf[TArray].underlying
-		val resultSource = Register(PointerTo(underlyingType), s"%${function.nameGenerator.nextRegister}")
-		activeBlock += GetElementPtr(resultSource, arraySource, indexSource)
-		(resultSource, true, activeBlock)
+		underlyingType match {
+			case TVoid =>
+				(Constant(TVoid, 0), false)
+			case _ =>
+				val resultSource = Register(CTPointerTo(underlyingType), s"%${function.nameGenerator.nextRegister}")
+				block += GetElementPtr(resultSource, arraySource, indexSource)
+				(resultSource, true)
+		}
+	}
+
+	def assembleArrayRead(arraySource: Register, indexSource: DefinedValue, block: Block)(using function: Function): DefinedValue = {
+		val underlyingType = arraySource.valueType.asInstanceOf[TArray].underlying
+		underlyingType match {
+			case TVoid =>
+				Constant(TVoid, 0)
+			case _ =>
+				// As long as the underlying type is not Void,
+				// we receive a pointer to the element and write access.
+				val (elementPtr, _) = assembleArrayAccess(arraySource, indexSource, block).asInstanceOf[(Register, Boolean)]
+				val resultSource = Register(underlyingType, s"%${function.nameGenerator.nextRegister}")
+				block += PtrLoad(resultSource, elementPtr)
+				resultSource
+		}
+	}
+
+	def assembleArrayLength(arraySource: Register, block: Block)(using function: Function): Register = {
+		val arrayPtrAsIntPtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
+		block += Bitcast(arrayPtrAsIntPtr, arraySource)
+		val arrayLengthPtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
+		block += GetElementPtr(arrayLengthPtr, arrayPtrAsIntPtr, Constant(TInt, -1))
+		val arrayLengthSource = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+		block += PtrLoad(arrayLengthSource, arrayLengthPtr)
+		arrayLengthSource
 	}
 }

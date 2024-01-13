@@ -122,15 +122,20 @@ case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: De
 	override def replaceDst(newDst: Register): BinOp = copy(dst = newDst)
 }
 
-case class GetElementPtr(dst: Register, ptr: Name, idx: DefinedValue, idxs: DefinedValue*) extends Assignment {
+case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, idxs: DefinedValue*) extends Assignment {
 	override def substitute(reg: Register, newValue: DefinedValue): GetElementPtr =
-			GetElementPtr(
-				dst,
-				if ptr == reg then newValue.asInstanceOf[Register] else ptr,
-				if idx == reg then newValue else idx,
-				idxs.map { idx => if idx == reg then newValue else idx }: _*
-			)
+		GetElementPtr(
+			dst,
+			if ptr == reg then newValue.asInstanceOf[Register] else ptr,
+			if idx == reg then newValue else idx,
+			idxs.map { idx => if idx == reg then newValue else idx }: _*
+		)
 	override def replaceDst(newDst: Register): GetElementPtr = GetElementPtr(newDst, ptr, idx, idxs: _*)
+}
+
+case class PtrToInt(dst: Register, ptr: Register) extends Assignment {
+	override def substitute(reg: Register, newValue: DefinedValue): PtrToInt = if ptr == reg then PtrToInt(dst, newValue.asInstanceOf[Register]) else this
+	override def replaceDst(newDst: Register): PtrToInt = PtrToInt(newDst, ptr)
 }
 
 case class Jump(blockName: String) extends Instruction
@@ -142,7 +147,7 @@ case class ConditionalJump(arg: DefinedValue, blockNameTrue: String, blockNameFa
 case class PtrStore(ptr: Register, arg: DefinedValue) extends Instruction {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrStore = copy(
 		if ptr == reg then newValue.asInstanceOf[Register] else ptr,
-		if arg == reg then newValue else ptr
+		if arg == reg then newValue else arg
 	)
 }
 

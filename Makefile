@@ -40,7 +40,7 @@ clean: clean-test
 	@sbt clean
 	@rm -rf latc latc_llvm dependencies.cp "${ARCHIVE_NAME}.tgz"
 	@rm -rf target/ project/target/
-	@rm -rf src/main/resources/aux.ll
+	@rm -rf src/main/resources/aux.bc
 
 .PHONY: doTest
 doTest: ${MAIN_CLASSPATH}main.built

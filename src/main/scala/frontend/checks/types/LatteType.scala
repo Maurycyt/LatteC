@@ -8,9 +8,12 @@ sealed trait CompilerType {
 }
 
 object CompilerType {
-	case object AnyPointer extends CompilerType { override val toLLVM: String = "i8*" }
-	case object FunctionPointer extends CompilerType { override val toLLVM: String = "void (...)*" }
-	case class PointerTo(underlying: CompilerType) extends CompilerType { override val toLLVM: String = s"${underlying.toLLVM}*"}
+	case object CTAnyPointer extends CompilerType { override val toLLVM: String = "i8*" }
+	case object CTFunctionPointer extends CompilerType { override val toLLVM: String = "void (...)*" }
+	class CTFunction(val args: Seq[CompilerType], val result: CompilerType) extends CompilerType {
+		override def toLLVM: String = args.map(_.toLLVM).mkString(s"${result.toLLVM}(", ",", ")") ++ "*"
+	}
+	case class CTPointerTo(underlying: CompilerType) extends CompilerType { override val toLLVM: String = s"${underlying.toLLVM}*"}
 }
 
 sealed trait LatteType extends CompilerType {
@@ -63,10 +66,10 @@ object LatteType {
 	case class TArray(underlying: TNonFun) extends LatteType {
 		override val toString: String = s"$underlying[]"
 		override def isValid(using classNames: Set[String]): Boolean = underlying.isValid
-		override val toLLVMNoPointer: String = s"${underlying.toLLVM}*"
+		override val toLLVMNoPointer: String = if underlying == TVoid then "i8*" else s"${underlying.toLLVM}*"
 	}
 
-	case class TFunction(args: Seq[LatteType], result: LatteType) extends LatteType {
+	case class TFunction(override val args: Seq[LatteType], override val result: LatteType) extends CompilerType.CTFunction(args, result) with LatteType {
 		override val toString: String = s"${args.mkString("(", ", ", ")")} -> $result"
 		override def isSubtypeOf(other: LatteType)(using hierarchyTable: HierarchyTable): Boolean = other match {
 			case TFunction(otherArgs, otherResult) =>

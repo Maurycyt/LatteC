@@ -8,8 +8,24 @@ void g(void x, void y) {
     return x;
 }
 
+void getVoid() { return; }
+
 int main() {
     void x, y = f();
     void z = g(x, y);
+
+    void [] a = new void [10];
+
+    int i = 0;
+    while (i < a.length) {
+        a[i] = getVoid();
+        printInt(a.length - i);
+        i++;
+    }
+
+    for (void x : a) {
+        printString("v");
+    }
+
     return 0;
 }
