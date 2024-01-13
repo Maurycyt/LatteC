@@ -178,6 +178,12 @@ case class Call(dst: Register, name: Name, args: Value*) extends Assignment {
 	override def replaceDst(newDst: Register): Call = Call(newDst, name, args: _*)
 }
 
+// Don't use unless necessary.
+case class Literal(instruction: String) extends Instruction {
+	override def substitute(reg: Register, newValue: DefinedValue): Literal = Literal(instruction.replace(s" $reg ", s" $newValue "))
+	def replaceDst(newDst: Register): Literal = Literal(instruction.replaceFirst("%\\w+(\\.\\w+)* = ", s"$newDst = "))
+}
+
 // Blocks
 
 class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]) {

@@ -1,0 +1,21 @@
+class voidWrapper {
+    int a;
+    void v;
+    int b;
+}
+
+void getVoid () {}
+
+int main() {
+    voidWrapper w;
+    w = new voidWrapper;
+    w.a = 2;
+    w.b = 3;
+
+    printInt(w.a + w.b);
+
+    if (w.v != getVoid())
+        printString("NOO");
+
+    return 0;
+}

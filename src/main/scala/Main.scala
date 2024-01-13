@@ -67,14 +67,21 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		PreambleGenerator.generatePreamble
 		fw write "\n\n"
+
 		val stringConstantMapping: Map[String, (Int, Label)] = StringConstantGenerator.generateStringConstants
 		given Map[String, (Int, Label)] = stringConstantMapping
-		fw write "\n\n"
-		ClassRepresentationBuilder.buildClasses
+		if stringConstantMapping.nonEmpty then fw write "\n\n"
 
+		// At this point we can confirm that the program is correct.
+		// We couldn't do this earlier, because we check string escapes in the backend.
 		System.err.println(s"${Console.BOLD}${Console.GREEN}OK!${Console.RESET}")
 
-		// Assemble the functions and transcribe them to LLVM IR.
+		// Assemble constructors and transcribe them to LLVM IR.
+		val classConstructors = ClassRepresentationBuilder.buildClasses
+		Transcriber().transcribeFunctions(classConstructors)
+		if classConstructors.nonEmpty then fw write "\n\n"
+
+		// Assemble the other functions and transcribe them to LLVM IR.
 		given topDefSymbolSourceStack: SymbolStack[SymbolSourceInfo] = SymbolStack(
 			topDefSymbols.collect {
 				case (symbolName, symbolInfo) if symbolInfo.symbolType.isInstanceOf[TFunction] =>

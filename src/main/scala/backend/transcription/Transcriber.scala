@@ -2,7 +2,7 @@ package backend.transcription
 
 import backend.representation.*
 import frontend.checks.types.CompilerType.{CTAnyPointer, CTPointerTo}
-import frontend.checks.types.LatteType.TArray
+import frontend.checks.types.LatteType.{TArray, TClass}
 
 import java.io.FileWriter
 
@@ -70,6 +70,7 @@ class Transcriber(
 					case pt @ CTPointerTo(underlying) => s"$dst = getelementptr ${underlying.toLLVM}, ${pt.toLLVM} $ptr, $idxArgs"
 					case ap @ CTAnyPointer => s"$dst = getelementptr i8, ${ap.toLLVM} $ptr, $idxArgs"
 					case ar @ TArray(underlying) => s"$dst = getelementptr ${underlying.toLLVM}, ${ar.toLLVM} $ptr, $idxArgs"
+					case cl @ TClass(_) => s"$dst = getelementptr ${cl.toLLVMNoPointer}, ${cl.toLLVM} $ptr, $idxArgs"
 					case _ => throw new RuntimeException(s"Cannot get element pointer from value of type ${ptr.valueType}.")
 				}
 
@@ -83,5 +84,6 @@ class Transcriber(
 			case CallVoid(name, args*) => s"call void $name(${args.map(_.toStringWithType).mkString(", ")})"
 			case Call(dst, name, args*) => s"$dst = call ${dst.valueType.toLLVM} $name(${args.map(_.toStringWithType).mkString(", ")})"
 			case Copy(dst, value) => s"$dst = $value" //throw RuntimeException("Cannot transcribe Copy to LLVM IR.")
+			case Literal(instruction) => instruction
 	}
 }

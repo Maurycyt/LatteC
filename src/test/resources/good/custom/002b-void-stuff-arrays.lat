@@ -1,19 +1,6 @@
-void f() {}
-
-void g(void x, void y) {
-    if (x == y)
-        printString("YAY!");
-    else
-        printString("NAY!");
-    return x;
-}
-
-void getVoid() { return; }
+void getVoid() {}
 
 int main() {
-    void x, y = f();
-    void z = g(x, y);
-
     void [] a = new void [10];
 
     int i = 0;

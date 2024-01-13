@@ -166,13 +166,16 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
 						else
 							throw RetypingError(symbolInfo.declarationPosition, symbolName, symbolInfo.symbolType, previousType, previousPosition = data(symbolName).declarationPosition)
 				}
-			case _ =>
+			case nonFunction =>
 				if (data.contains(symbolName)) {
 					throw RedeclarationError(symbolInfo.declarationPosition, symbolName, data(symbolName).declarationPosition)
 				}
 				// We give variables offsets starting at 1 because in a user-defined class, the vtable pointer appears first in the structure.
-				data += symbolName -> MemberInfo(symbolInfo, className, memberVariables + 1)
-				memberVariables += 1
+				if nonFunction == TVoid then
+					data += symbolName -> MemberInfo(symbolInfo, className, 0)
+				else
+					data += symbolName -> MemberInfo(symbolInfo, className, memberVariables + 1)
+					memberVariables += 1
 		}
 		this
 	}

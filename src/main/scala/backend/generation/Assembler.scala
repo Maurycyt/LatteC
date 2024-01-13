@@ -471,7 +471,7 @@ class ExpressionAssembler()(
 		thisBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), Constant(TInt, 1), sizeInt)
 		val classPtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
 		thisBlock += Bitcast(classPtr, allocSource)
-		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)))
+		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)), classPtr)
 		(classPtr, thisBlock)
 	}
 
@@ -581,7 +581,7 @@ class ValueAssembler(
 			(sourceMaybePtr, activeBlock)
 	}
 
-	override def visitVMem(ctx: LatteParser.VMemContext): (Register, Boolean, Block) = {
+	override def visitVMem(ctx: LatteParser.VMemContext): (DefinedValue, Boolean, Block) = {
 		// Get the source of the object owning the member.
 		val (entitySource, activeBlock) = visitForRead(ctx.value).asInstanceOf[(Register, Block)]
 
@@ -603,6 +603,8 @@ class ValueAssembler(
 						val functionPtrTyped = Register(memberType, s"%${function.nameGenerator.nextRegister}")
 						activeBlock += Bitcast(functionPtrTyped, functionPtr)
 						(functionPtrTyped, false, activeBlock)
+					case TVoid =>
+						(Constant(TVoid, 0), false, activeBlock)
 					case nonFunctionType =>
 						// A field can be written to, so return pointer to it.
 						val memberPointer = Register(CTPointerTo(memberType), s"%${function.nameGenerator.nextRegister}")
