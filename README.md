@@ -9,7 +9,7 @@
 
 ## Language Specification
 
-The Latte language is a simple Java-like language. The ANTLR syntax of Latte is detailed in [Latte.cf](src/main/resources/Latte.g4). Examples of Latte programs can be found in [the test resources folder](src/test/resources) in `good` and `extensions`.
+The Latte language is a simple Java-like language. The ANTLR syntax of Latte is detailed in [Latte.cf](src/main/resources/Latte.g4). Examples of Latte programs can be found in [the test resources folder](src/test/resources) in [`good`](src/test/resources/good).
 
 The core features of Latte include:
 - Integer, boolean and string constants and variables.
@@ -43,7 +43,6 @@ int main() {
     
     for(A a : arrayOfA) {
         a.print();
-        printString("\n");
     }
     
     return 0;
@@ -58,7 +57,9 @@ For input
 The output should be:
 ```
 A
-B(1)
+B(
+1
+)
 ```
 
 ## Aim of this Project

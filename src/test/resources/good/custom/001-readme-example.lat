@@ -16,7 +16,6 @@ int main() {
 
     for(A a : arrayOfA) {
         a.print();
-        printString("\n");
     }
 
     return 0;
