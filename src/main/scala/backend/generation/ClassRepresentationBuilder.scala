@@ -1,6 +1,6 @@
 package backend.generation
 
-import frontend.checks.symbols.{ClassTable, MemberTable, SymbolInfo}
+import frontend.checks.symbols.{ClassTable, MemberInfo, MemberTable, SymbolInfo}
 import NamingConvention.*
 import frontend.checks.types.LatteType
 import frontend.checks.types.LatteType.*
@@ -39,14 +39,16 @@ object ClassRepresentationBuilder {
 	}
 
 	private def buildVTableDefinition(using className: String, memberTable: MemberTable, fw: FileWriter): Unit = {
-		val methodTable: Seq[SymbolInfo] = memberTable.methods.map(_.symbolInfo)
+		val methodTable: Seq[MemberInfo] = memberTable.methods
 		val numFunctions = memberTable.numFunctions
 
 		fw write methodTable
 			.map { methodSymbol =>
-				s"\tvoid()* bitcast (${methodSymbol.symbolType.toLLVM} ${method(className, methodSymbol.symbolName)} to void()*)"
+				val methodTypeWithoutSelf = methodSymbol.symbolType.asInstanceOf[TFunction]
+				val methodTypeWithSelf = methodTypeWithoutSelf.copy(args = methodTypeWithoutSelf.args.prepended(TClass(methodSymbol.hostClass)))
+				s"\n\tvoid()* bitcast (${methodTypeWithSelf.toLLVM} ${method(methodSymbol.hostClass, methodSymbol.symbolName)} to void()*)"
 			}
-			.mkString(s"${vTable(className)} = global [$numFunctions x void()*] [\n", ",\n", "]\n\n")
+			.mkString(s"${vTable(className)} = global [$numFunctions x void()*] [", ",", "\n]\n")
 	}
 
 	private def buildConstructor(using className: String, memberTable: MemberTable, fw: FileWriter): Function = {

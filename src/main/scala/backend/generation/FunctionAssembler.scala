@@ -30,7 +30,7 @@ class FunctionAssembler()(
 		val className: String = ctx.ID(0).getText
 		FunctionAssembler(using
 			symbolStack.withNewScope(
-				classTable(className).memberTable.asSymTable.map { (name, info) => name -> SymbolSourceInfo(info: SymbolInterface) }
+				classTable(className).memberTable.asSymTable.map { (name, info) => name -> SymbolSourceInfo(info.symbolName, Some(className), Constant(info.symbolType, 0)) }
 			),
 			classTable,
 			Some(className)
@@ -38,37 +38,50 @@ class FunctionAssembler()(
 	}
 
 	override def visitFunctionDef(ctx: LatteParser.FunctionDefContext): Set[Function] = {
+		// Prepare general function information.
 		val functionName: String = ctx.ID.getText
-		val functionType: TFunction = TypeCollector().visitFunctionDef(ctx).asInstanceOf[TFunction]
-		val functionNameInLLVM = hostClass match {
-			case Some(className) => NamingConvention.method(className, functionName)
-			case None => NamingConvention.function(functionName)
+		val (functionType, functionNameInLLVM) = hostClass match {
+			case Some(className) =>
+				val functionTypeWithoutSelf = TypeCollector().visitFunctionDef(ctx).asInstanceOf[TFunction]
+				val functionTypeWithSelf = functionTypeWithoutSelf.copy(args = functionTypeWithoutSelf.args.prepended(TClass(className)))
+				(functionTypeWithSelf, NamingConvention.method(className, functionName))
+			case None =>
+				(TypeCollector().visitFunctionDef(ctx).asInstanceOf[TFunction], NamingConvention.function(functionName))
 		}
 		val functionSourceInfo: SymbolSourceInfo = SymbolSourceInfo(functionName, hostClass, Label(functionType, functionNameInLLVM))
 		val nameGenerator = NameGenerator()
 
+		// Prepare function arguments.
 		val argsWithTypes: Seq[(String, LatteType)] =
-			if ctx.args != null then
+			(if ctx.args != null then
 				ctx.args.ID.asScala.toSeq.zip(ctx.args.anyType.asScala.toSeq)
 					.map { (id, anyType) => id.getText -> TypeCollector().visit(anyType) }
 			else
 				Seq.empty
+			).prependedAll(
+				hostClass match {
+					case Some(className) => Some(NamingConvention.self -> TClass(className))
+					case None => None
+				}
+			)
 
 		val newScope =
 			// The function itself, for recursion.
 			mutable.HashMap(functionName -> functionSourceInfo) ++
-			// The (somewhat artificial) self pointer, for access to members.
-			{ hostClass match {
-					case Some(className) => mutable.HashMap(NamingConvention.self -> SymbolSourceInfo(NamingConvention.self, None, Register(TClass(className), NamingConvention.self)))
-					case None => mutable.HashMap.empty
-			}} ++
 			// The arguments.
 			mutable.HashMap.from(
 				argsWithTypes.map { (name, anyType) => name ->
-					SymbolSourceInfo(name, None, if anyType != TVoid then Register(anyType, s"%${nameGenerator.nextRegister}") else Constant(anyType, 0))
+					SymbolSourceInfo(
+						name,
+						None,
+						if anyType != TVoid then
+							Register(anyType, if name == "%self" then "%self" else s"%${nameGenerator.nextRegister}")
+						else
+							Constant(anyType, 0))
 				}
 			)
 
+		// Assemble function.
 		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
 		assembledFunction.addBlock(Some("entry"))
 
@@ -76,6 +89,7 @@ class FunctionAssembler()(
 		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
 		symbolStack.removeScope()
 
+		// Return function.
 		Set(assembledFunction)
 	}
 }

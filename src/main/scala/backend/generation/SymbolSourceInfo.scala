@@ -14,8 +14,6 @@ import frontend.Position
 class SymbolSourceInfo(val symbolName: String, val hostClass: Option[String], var source: Source) extends SymbolInterface {
 	override def declarationPosition: Position = Position(0, 0) // Whatever, we won't be using it. I know, this is *slightly* spaghetti.
 	override def symbolType: CompilerType = source.valueType
-
-	def this(info: SymbolInterface) = this(info.symbolName, None, Constant(info.symbolType, 0))
 }
 
 object SymbolSourceInfo {

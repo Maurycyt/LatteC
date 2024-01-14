@@ -162,7 +162,12 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
 						if fType.isSubtypeOf(previousType) then
 							data +=
 								symbolName ->
-								data(symbolName).copy(declarationPosition = symbolInfo.declarationPosition, symbolName = symbolInfo.symbolName, symbolType = symbolInfo.symbolType)
+								data(symbolName).copy(
+									declarationPosition = symbolInfo.declarationPosition,
+									symbolName = symbolInfo.symbolName,
+									symbolType = symbolInfo.symbolType,
+									hostClass = className
+								)
 						else
 							throw RetypingError(symbolInfo.declarationPosition, symbolName, symbolInfo.symbolType, previousType, previousPosition = data(symbolName).declarationPosition)
 				}

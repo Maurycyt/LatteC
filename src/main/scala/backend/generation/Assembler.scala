@@ -3,11 +3,10 @@ package backend.generation
 import backend.generation.ValueAssembler.assembleArrayAccess
 import backend.representation.*
 import frontend.checks.symbols.{ClassTable, MemberInfo, SymbolStack}
-import frontend.checks.types.LatteType
+import frontend.checks.types.{CompilerType, LatteType, TypeCollector}
 import frontend.checks.types.LatteType.*
 import frontend.Position
 import frontend.checks.types.CompilerType.{CTAnyPointer, CTFunction, CTFunctionPointer, CTPointerTo}
-import frontend.checks.types.TypeCollector
 import grammar.{LatteBaseVisitor, LatteParser}
 import org.antlr.v4.runtime.tree.ParseTree
 
@@ -69,24 +68,40 @@ class StatementAssembler()(using
 	}
 
 	override def visitSAss(ctx: LatteParser.SAssContext): (Block, Boolean) = {
-		val (valueSource, writable, activeBlockV) = ValueAssembler().visit(ctx.value).asInstanceOf[(DefinedValue, Boolean, Block)]
+		val (valueSource, writable, _, activeBlockV) = ValueAssembler().visit(ctx.value).asInstanceOf[(DefinedValue, Boolean, Option[Register], Block)]
+		val valueType = valueSource.valueType
 		val (exprSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
+		val exprType = exprSource.valueType
+
+		def castIfNecessary(targetType: CompilerType, value: DefinedValue, block: Block): DefinedValue = {
+			if targetType == exprType then
+				exprSource
+			else
+				val castResult = Register(targetType, s"%${function.nameGenerator.nextRegister}")
+				block += Bitcast(castResult, exprSource.asInstanceOf[Register])
+				castResult
+		}
 
 		// If it is writable, then we have a pointer.
 		// If it is not writable, then we must be dealing with a local variable or void.
+		// Furthermore, we must perform a bitcast if the types do not match,
+		// because that means we are dealing with an object of a subclass.
 		if writable then {
-			activeBlock += PtrStore(valueSource.asInstanceOf[Register], exprSource)
+			val dereferencedValueType = valueType.asInstanceOf[CTPointerTo].underlying
+			val exprSourceAfterCast = castIfNecessary(dereferencedValueType, exprSource, activeBlock)
+			activeBlock += PtrStore(valueSource.asInstanceOf[Register], exprSourceAfterCast)
 		} else {
 			if valueSource.valueType != TVoid then
-				activeBlock += Copy(valueSource.asInstanceOf[Register], exprSource)
+				val exprSourceAfterCast = castIfNecessary(valueType, exprSource, activeBlock)
+				activeBlock += Copy(valueSource.asInstanceOf[Register], exprSourceAfterCast)
 		}
 		considerJumping(activeBlock, false)
 	}
 
 	private def visitPostcrement(ctx: LatteParser.SIncrContext | LatteParser.SDecrContext): (Block, Boolean) = {
-		val ((valueSource, writable, activeBlock), op) = ctx match {
-			case incr: LatteParser.SIncrContext => (ValueAssembler().visit(incr.value).asInstanceOf[(Register, Boolean, Block)], Plus)
-			case decr: LatteParser.SDecrContext => (ValueAssembler().visit(decr.value).asInstanceOf[(Register, Boolean, Block)], Minus)
+		val ((valueSource, writable, _, activeBlock), op) = ctx match {
+			case incr: LatteParser.SIncrContext => (ValueAssembler().visit(incr.value).asInstanceOf[(Register, Boolean, Option[Register], Block)], Plus)
+			case decr: LatteParser.SDecrContext => (ValueAssembler().visit(decr.value).asInstanceOf[(Register, Boolean, Option[Register], Block)], Minus)
 		}
 
 		// If it is writable, then we have a pointer.
@@ -158,7 +173,7 @@ class StatementAssembler()(using
 		// Construct the preamble, which is taking the source of the array and its length.
 		val iteratorName: String = ctx.ID.getText
 		val iteratorType: LatteType = TypeCollector(using classTable.keys.toSet).visit(ctx.basicType)
-		val (arraySource, activeBlock) = ValueAssembler().visitForRead(ctx.expr).asInstanceOf[(Register, Block)]
+		val (arraySource, activeBlock, _) = ValueAssembler().visitForRead(ctx.expr).asInstanceOf[(Register, Block, Option[Register])]
 		val arrayLengthSource = ValueAssembler.assembleArrayLength(arraySource, activeBlock)
 
 		val blockCond = function.addBlock()
@@ -438,7 +453,7 @@ class ExpressionAssembler()(
 	}
 
 	override def visitEVal(ctx: LatteParser.EValContext): (DefinedValue, Block) = {
-		val (resultSource, activeBlock) = ValueAssembler().visitForRead(ctx).asInstanceOf[(DefinedValue, Block)]
+		val (resultSource, activeBlock, _) = ValueAssembler().visitForRead(ctx).asInstanceOf[(DefinedValue, Block, Option[Register])]
 		if resultSource.valueType == TBool then
 			considerJumping(resultSource, activeBlock)
 		else
@@ -513,7 +528,9 @@ class ExpressionAssembler()(
 	}
 
 	override def visitEFunCall(ctx: LatteParser.EFunCallContext): (DefinedValue, Block) = {
-		val (functionPtr, activeBlockF) = ValueAssembler().visitForRead(ctx.value).asInstanceOf[(Name, Block)]
+		val (functionPtr, activeBlockF, hostObjectSource) = ValueAssembler().visitForRead(ctx.value).asInstanceOf[(Name, Block, Option[Register])]
+		val functionType = functionPtr.valueType.asInstanceOf[TFunction]
+		val argTypes = functionType.args.filterNot(_ == TVoid)
 		var activeBlock = activeBlockF
 		val exprs: Seq[LatteParser.ExprContext] = if ctx.expr == null then Seq.empty[LatteParser.ExprContext] else ctx.expr.asScala.toSeq
 
@@ -521,15 +538,25 @@ class ExpressionAssembler()(
 			val (exprSource, activeBlockE) = ExpressionAssembler()(using blocksAfter = None).visit(expr)
 			activeBlock = activeBlockE
 			exprSource
-		}.filterNot(_.valueType == TVoid)
+		}.filterNot(_.valueType == TVoid).prependedAll(hostObjectSource)
+
+		val exprSourcesAfterCasts = argTypes.zip(exprSources).map { (argType, exprSource) =>
+			if argType != exprSource.valueType then
+				// We must be dealing with an object subtype.
+				val exprSourceAfterCast = Register(argType, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += Bitcast(exprSourceAfterCast, exprSource.asInstanceOf[Register])
+				exprSourceAfterCast
+			else
+				exprSource
+		}
 
 		functionPtr.valueType.asInstanceOf[TFunction] match {
 			case TFunction(_, TVoid) =>
-				activeBlock += CallVoid(functionPtr, exprSources: _*)
+				activeBlock += CallVoid(functionPtr, exprSourcesAfterCasts: _*)
 				(Constant(TVoid, 0), activeBlock)
-			case TFunction(_, returnType) =>
+			case TFunction(argTypes, returnType) =>
 				val resultSource = Register(returnType, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Call(resultSource, functionPtr, exprSources: _*)
+				activeBlock += Call(resultSource, functionPtr, exprSourcesAfterCasts: _*)
 				if returnType == TBool then
 					considerJumping(resultSource, activeBlock)
 				else
@@ -543,9 +570,10 @@ class ExpressionAssembler()(
 
 /**
  * Assembles values in non-SSA form.
- * This visitor returns the Source of the pointer to the requested value, or a pointer for write access.
+ * This visitor returns the Source of the requested value, or a pointer for write access.
  * The second value in the returned tuple signifies whether a source with the pointer
  * to the writable value was returned instead of the value itself.
+ * The third return value is the pointer to a possible host object.
  * @param symbolStack    The symbol stack to use when assembling an expression.
  * @param classTable     Information about classes defined in the program.
  * @param thisBlock      The block which is being assembled.
@@ -558,76 +586,91 @@ class ValueAssembler(
 	function   : Function,
 	thisBlock  : Block,
 	hostClass  : Option[String]
-) extends LatteBaseVisitor[(Source, Boolean, Block)] {
-	override def visitVSelf(ctx: LatteParser.VSelfContext): (Register, Boolean, Block) =
-		(Register(TClass(hostClass.get), NamingConvention.self), false, thisBlock)
+) extends LatteBaseVisitor[(Source, Boolean, Option[Register], Block)] {
+	override def visitVSelf(ctx: LatteParser.VSelfContext): (Register, Boolean, Option[Register], Block) =
+		(Register(TClass(hostClass.get), NamingConvention.self), false, None, thisBlock)
 
-	override def visitVID(ctx: LatteParser.VIDContext): (Source, Boolean, Block) =
-		(symbolStack.getOrThrow(ctx.ID.getText, Position.fromToken(ctx.ID.getSymbol)).source, false, thisBlock)
+	override def visitVID(ctx: LatteParser.VIDContext): (Source, Boolean, Option[Register], Block) = {
+		val symbolSourceInfoFromSymTable = symbolStack.getOrThrow(ctx.ID.getText, Position.fromToken(ctx.ID.getSymbol))
+
+		symbolSourceInfoFromSymTable.hostClass match {
+			case None =>
+				// We're dealing with a variable.
+				(symbolSourceInfoFromSymTable.source, false, None, thisBlock)
+			case Some(className) =>
+				// We're dealing with a class member
+				getMember(Register(TClass(className), NamingConvention.self), className, ctx.ID.getText, thisBlock)
+		}
+	}
 
 	/**
 	 * Visits a value and if a pointer to a writable value was returned, then it loads the pointer.
 	 * @param ctx The value to visit
 	 * @return The read-only value.
 	 */
-	def visitForRead(ctx: ParseTree): (Source, Block) = {
-		val (sourceMaybePtr, writable, activeBlock) = visit(ctx)
+	def visitForRead(ctx: ParseTree): (Source, Block, Option[Register]) = {
+		val (sourceMaybePtr, writable, hostObjectSource, activeBlock) = visit(ctx)
 		if writable then
 			val underlyingType = sourceMaybePtr.valueType.asInstanceOf[CTPointerTo].underlying
 			val sourceRegister = Register(underlyingType, s"%${function.nameGenerator.nextRegister}")
 			activeBlock += PtrLoad(sourceRegister, sourceMaybePtr.asInstanceOf[Register])
-			(sourceRegister, activeBlock)
+			(sourceRegister, activeBlock, hostObjectSource)
 		else
-			(sourceMaybePtr, activeBlock)
+			(sourceMaybePtr, activeBlock, hostObjectSource)
 	}
 
-	override def visitVMem(ctx: LatteParser.VMemContext): (DefinedValue, Boolean, Block) = {
+	override def visitVMem(ctx: LatteParser.VMemContext): (Source, Boolean, Option[Register], Block) = {
 		// Get the source of the object owning the member.
-		val (entitySource, activeBlock) = visitForRead(ctx.value).asInstanceOf[(Register, Block)]
+		val (entitySource, activeBlock, _) = visitForRead(ctx.value).asInstanceOf[(Register, Block, Option[Register])]
 
 		entitySource.valueType match {
 			case TClass(className) =>
 				// Get the source of the member.
-				val MemberInfo(_, _, memberType, _, offset) = classTable(className).memberTable.apply(ctx.ID.getText)
-				memberType match {
-					case functionType: TFunction =>
-						// If it's a function, it cannot be written to, so return function pointer.
-						val objectSourcePtr = Register(CTPointerTo(CTPointerTo(CTFunctionPointer)), s"%${function.nameGenerator.nextRegister}")
-						activeBlock += Bitcast(objectSourcePtr, entitySource)
-						val vTablePtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
-						activeBlock += PtrLoad(vTablePtr, objectSourcePtr)
-						val functionPtrPtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
-						activeBlock += GetElementPtr(functionPtrPtr, vTablePtr, Constant(TInt, offset))
-						val functionPtr = Register(CTFunctionPointer, s"%${function.nameGenerator.nextRegister}")
-						activeBlock += PtrLoad(functionPtr, functionPtrPtr)
-						val functionPtrTyped = Register(memberType, s"%${function.nameGenerator.nextRegister}")
-						activeBlock += Bitcast(functionPtrTyped, functionPtr)
-						(functionPtrTyped, false, activeBlock)
-					case TVoid =>
-						(Constant(TVoid, 0), false, activeBlock)
-					case nonFunctionType =>
-						// A field can be written to, so return pointer to it.
-						val memberPointer = Register(CTPointerTo(memberType), s"%${function.nameGenerator.nextRegister}")
-						activeBlock += GetElementPtr(memberPointer, entitySource, Constant(TInt, 0), Constant(TInt, offset))
-						(memberPointer, true, activeBlock)
-				}
+				getMember(entitySource, className, ctx.ID.getText, activeBlock)
 			case TArray(underlying) =>
 				// The only member of an array is its length.
 				val arrayLengthSource = ValueAssembler.assembleArrayLength(entitySource, activeBlock)
-				(arrayLengthSource, false, activeBlock)
+				(arrayLengthSource, false, None, activeBlock)
 			case _ => throw new RuntimeException("Unexpected host entity of member value.")
 		}
 	}
 
-	override def visitVArr(ctx: LatteParser.VArrContext): (DefinedValue, Boolean, Block) = {
+	private def getMember(classSource: Register, className: String, memberName: String, activeBlock: Block): (Source, Boolean, Option[Register], Block) = {
+		val MemberInfo(_, _, memberType, _, offset) = classTable(className).memberTable.apply(memberName)
+		memberType match {
+			case functionType: TFunction =>
+				val functionTypeWithSelf = functionType.copy(args = functionType.args.prepended(TClass(className)))
+				// If it's a function, it cannot be written to, so return function pointer.
+				val objectSourcePtr = Register(CTPointerTo(CTPointerTo(CTFunctionPointer)), s"%${function.nameGenerator.nextRegister}")
+				activeBlock += Bitcast(objectSourcePtr, classSource)
+				val vTablePtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
+				activeBlock += PtrLoad(vTablePtr, objectSourcePtr)
+				val functionPtrPtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
+				activeBlock += GetElementPtr(functionPtrPtr, vTablePtr, Constant(TInt, offset))
+				val functionPtr = Register(CTFunctionPointer, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += PtrLoad(functionPtr, functionPtrPtr)
+				val functionPtrTyped = Register(functionTypeWithSelf, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += Bitcast(functionPtrTyped, functionPtr)
+				(functionPtrTyped, false, Some(classSource), activeBlock)
+			case TVoid =>
+				(Constant(TVoid, 0), false, Some(classSource), activeBlock)
+			case nonFunctionType =>
+				// A field can be written to, so return pointer to it.
+				val memberPointer = Register(CTPointerTo(memberType), s"%${function.nameGenerator.nextRegister}")
+				activeBlock += GetElementPtr(memberPointer, classSource, Constant(TInt, 0), Constant(TInt, offset))
+				(memberPointer, true, Some(classSource), activeBlock)
+		}
+	}
+
+	override def visitVArr(ctx: LatteParser.VArrContext): (Source, Boolean, Option[Register], Block) = {
 		// Get the source of the array containing the member.
-		val (arraySource, activeBlockA) = visitForRead(ctx.value).asInstanceOf[(Register, Block)]
+		val (arraySource, activeBlockA, _) = visitForRead(ctx.value).asInstanceOf[(Register, Block, Option[Register])]
 		// Get the source of the index.
 		val (indexSource, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockA, blocksAfter = None).visit(ctx.expr)
 		// Get the source of the element.
 		// canWrite is false only for void.
 		val (resultSource, canWrite) = ValueAssembler.assembleArrayAccess(arraySource, indexSource, activeBlock)
-		(resultSource, canWrite, activeBlock)
+		(resultSource, canWrite, None, activeBlock)
 	}
 }
 
