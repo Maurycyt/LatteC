@@ -7,6 +7,6 @@ int main() {
 }
 
 void foo() {
-   printString("foo");
+   printString("foo" + "bar");
    return;
 }

@@ -16,7 +16,7 @@ def generatedGrammarFiles(baseDirectoryFile: File): Seq[File] = {
 lazy val root = (project in file("."))
   .settings(
     name := s"${languageName}C",
-	  scalacOptions ++= Seq("-deprecation", "-explain"),
+	  scalacOptions ++= Seq("-deprecation", "-explain", "-print-lines", "-new-syntax"),
 
 	  // Generates the lexer and parser.
 	  Compile / sourceGenerators += Def.task {

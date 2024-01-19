@@ -1,5 +1,6 @@
 package backend.generation
 
+import backend.generation.StatementAssembler.{decreaseReferenceCounts, increaseReferenceCounts}
 import backend.generation.ValueAssembler.assembleArrayAccess
 import backend.representation.*
 import frontend.checks.symbols.{ClassTable, MemberInfo, SymbolStack}
@@ -17,20 +18,21 @@ case class GenerationError(message: String) extends Error
 
 /**
  * Assembles statements in non-SSA form.
- * @param symbolStack   The symbol stack to use when assembling a statement.
- * @param classTable    Information about classes defined in the program.
- * @param function      The function which is being assembled.
- * @param thisBlock     The block which is being assembled.
- * @param hostClass     The possible host class of the function being assembled.
- * @param blockAfter    The possible block which should be jumped to at the end of [[thisBlock]].
+ * @param symbolStack     The symbol stack to use when assembling a statement.
+ * @param classTable      Information about classes defined in the program.
+ * @param function        The function which is being assembled.
+ * @param thisBlock       The block which is being assembled.
+ * @param hostClass       The possible host class of the function being assembled.
+ * @param blockAfter      The possible block which should be jumped to at the end of [[thisBlock]].
  */
-class StatementAssembler()(using
-	symbolStack: SymbolStack[SymbolSourceInfo],
-	classTable : ClassTable,
-	function   : Function,
-	thisBlock  : Block,
-	hostClass  : Option[String],
-	blockAfter : Option[Block]
+class StatementAssembler()(
+	using
+	symbolStack    : SymbolStack[SymbolSourceInfo],
+	classTable     : ClassTable,
+	function       : Function,
+	thisBlock      : Block,
+	hostClass      : Option[String],
+	blockAfter     : Option[Block]
 ) extends LatteBaseVisitor[(Block, Boolean)] {
 	private def considerJumping(activeBlock: Block, brokeFlow: Boolean): (Block, Boolean) = {
 		if brokeFlow then return (activeBlock, true)
@@ -44,11 +46,32 @@ class StatementAssembler()(using
 		}
 	}
 
+	// Decrease reference counts for every variable declared in a function.
+	// This searches through the symbol stack and clears all variables until it
+	// reaches the frame where the function and its arguments were defined.
+	private def decreaseReferenceCountsInFunction(block: Block): Unit = {
+		symbolStack.tables.foldLeft(false) { (skip, symbolTable) =>
+			if skip then
+				skip
+			else
+				val sourceInfos = symbolTable.values.toSeq
+				decreaseReferenceCounts(
+					sourceInfos.filterNot(Seq(NamingConvention.self, function.name).contains).map(_.source),
+					function,
+					block
+				)
+				sourceInfos.exists(_.symbolName == function.name)
+		}
+	}
+
 	override def visitSEmpty(ctx: LatteParser.SEmptyContext): (Block, Boolean) = (thisBlock, false)
 
 	override def visitBlock(ctx: LatteParser.BlockContext): (Block, Boolean) = {
 		symbolStack.addScope()
+
+		// Assemble the statements
 		val stmts = ctx.stmt.asScala.toSeq
+		val unboundPointersInBlock: mutable.Set[Register] = mutable.Set.empty
 		val (activeBlock, brokeFlow) = stmts.foldLeft((thisBlock, false)) {
 			case ((block, brokeFlow), stmt) =>
 				if brokeFlow then
@@ -56,6 +79,17 @@ class StatementAssembler()(using
 				else
 					StatementAssembler()(using thisBlock = block, blockAfter = None).visit(stmt)
 		}
+
+		// If the block does not break flow with a return,
+		// release references bound to variables declared in block.
+		if !brokeFlow then
+			decreaseReferenceCounts(
+				symbolStack.tables.head.values.map(_.source),
+				function,
+				activeBlock
+			)
+			activeBlock += CallVoid(Label(CTFunction(Seq(), TVoid), "@clearUnboundPointers"))
+
 		symbolStack.removeScope()
 		considerJumping(activeBlock, brokeFlow)
 	}
@@ -78,7 +112,7 @@ class StatementAssembler()(using
 				exprSource
 			else
 				val castResult = Register(targetType, s"%${function.nameGenerator.nextRegister}")
-				block += Bitcast(castResult, exprSource.asInstanceOf[Register])
+				block += Bitcast(castResult, exprSource)
 				castResult
 		}
 
@@ -89,10 +123,16 @@ class StatementAssembler()(using
 		if writable then {
 			val dereferencedValueType = valueType.asInstanceOf[CTPointerTo].underlying
 			val exprSourceAfterCast = castIfNecessary(dereferencedValueType, exprSource, activeBlock)
+			val vanishingReference = Register(dereferencedValueType, s"%${function.nameGenerator.nextRegister}")
+			activeBlock += PtrLoad(vanishingReference, valueSource.asInstanceOf[Register])
+			increaseReferenceCounts(Seq(exprSourceAfterCast), function, activeBlock)
+			decreaseReferenceCounts(Seq(vanishingReference), function, activeBlock)
 			activeBlock += PtrStore(valueSource.asInstanceOf[Register], exprSourceAfterCast)
 		} else {
 			if valueSource.valueType != TVoid then
 				val exprSourceAfterCast = castIfNecessary(valueType, exprSource, activeBlock)
+				increaseReferenceCounts(Seq(exprSourceAfterCast), function, activeBlock)
+				decreaseReferenceCounts(Seq(valueSource), function, activeBlock)
 				activeBlock += Copy(valueSource.asInstanceOf[Register], exprSourceAfterCast)
 		}
 		considerJumping(activeBlock, false)
@@ -122,6 +162,16 @@ class StatementAssembler()(using
 
 	override def visitSRetValue(ctx: LatteParser.SRetValueContext): (Block, Boolean) = {
 		val (resultSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr)
+
+		// Before returning, we must decrease reference counts
+		// for all variables declared in the function.
+		decreaseReferenceCountsInFunction(thisBlock)
+		// Increase reference count for returned result to avoid clearing it.
+		// Then, clear unbound pointers, then decrease the reference count again.
+		increaseReferenceCounts(Seq(resultSource), function, activeBlock)
+		activeBlock += CallVoid(Label(CTFunction(Seq(), TVoid), "@clearUnboundPointers"))
+		decreaseReferenceCounts(Seq(resultSource), function, activeBlock)
+
 		if resultSource.valueType == TVoid then
 			activeBlock += ReturnVoid
 		else
@@ -130,6 +180,11 @@ class StatementAssembler()(using
 	}
 
 	override def visitSRetVoid(ctx: LatteParser.SRetVoidContext): (Block, Boolean) = {
+		// Before returning, we must decrease reference counts
+		// for all variables declared in the function.
+		decreaseReferenceCountsInFunction(thisBlock)
+		thisBlock += CallVoid(Label(CTFunction(Seq(), TVoid), "@clearUnboundPointers"))
+
 		thisBlock += ReturnVoid
 		(thisBlock, true)
 	}
@@ -223,40 +278,58 @@ class StatementAssembler()(using
 	}
 }
 
+object StatementAssembler {
+	private def changeReferenceCounts(sources: Iterable[Source], function: Function, block: Block, decrease: Boolean): Unit = {
+		sources.foreach { source =>
+			if source.valueType.isInstanceOf[TStr.type | TArray | TClass] then
+				val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+				block += Bitcast(pointerRegister, source.asInstanceOf[DefinedValue])
+				block += CallVoid(Label(CTFunction(Seq(CTAnyPointer), TVoid), if decrease then "@decreaseRefCount" else "@increaseRefCount"), pointerRegister)
+		}
+	}
+
+	def decreaseReferenceCounts(sources: Iterable[Source], function: Function, block: Block): Unit =
+		changeReferenceCounts(sources, function, block, true)
+
+	def increaseReferenceCounts(sources: Iterable[Source], function: Function, block: Block): Unit =
+		changeReferenceCounts(sources, function, block, false)
+}
+
 /**
  * Assembles items in non-SSA form.
- * @param symbolStack The symbol stack to use when assembling a statement.
- * @param classTable  Information about classes defined in the program.
- * @param function    The function which is being assembled.
- * @param thisBlock   The block which is being assembled.
- * @param hostClass   The possible host class of the function being assembled.
+ *
+ * @param symbolStack     The symbol stack to use when assembling a statement.
+ * @param classTable      Information about classes defined in the program.
+ * @param function        The function which is being assembled.
+ * @param thisBlock       The block which is being assembled.
+ * @param hostClass       The possible host class of the function being assembled.
  */
 class ItemAssembler(
 	itemType   : LatteType
 )(
 	using
-	symbolStack: SymbolStack[SymbolSourceInfo],
-	classTable : ClassTable,
-	function   : Function,
-	thisBlock  : Block,
-	hostClass  : Option[String]
+	symbolStack    : SymbolStack[SymbolSourceInfo],
+	classTable     : ClassTable,
+	function       : Function,
+	thisBlock      : Block,
+	hostClass      : Option[String]
 ) extends LatteBaseVisitor[Block] {
 	override def visitItem(ctx: LatteParser.ItemContext): Block = {
 		val expr = ctx.expr
 		val itemName = ctx.ID.getText
 		if expr == null then
-			itemType match {
-				// TODO: Handle arrays?
-				case _ =>
-					val resultRegister = Register(itemType, s"%${function.nameGenerator.nextRegister}")
-					thisBlock += Copy(resultRegister, Constant(itemType, 0))
-					symbolStack.add(SymbolSourceInfo(itemName, None, resultRegister))
-			}
+			val resultRegister = Register(itemType, s"%${function.nameGenerator.nextRegister}")
+			thisBlock += Copy(resultRegister, Constant(itemType, 0))
+			symbolStack.add(SymbolSourceInfo(itemName, None, resultRegister))
 			thisBlock
 		else
 			val (itemSource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(expr)
+
 			val resultRegister = Register(itemSource.valueType, s"%${function.nameGenerator.nextRegister}")
 			activeBlock += Copy(resultRegister, itemSource)
+
+			increaseReferenceCounts(Seq(resultRegister), function, activeBlock)
+
 			symbolStack.add(SymbolSourceInfo(itemName, None, resultRegister))
 			activeBlock
 	}
@@ -265,21 +338,21 @@ class ItemAssembler(
 /**
  * Assembles expressions in non-SSA form.
  * This visitor returns the Source of the result of the expression, and the active block where the source is to be used.
- * @param symbolStack    The symbol stack to use when assembling an expression.
- * @param classTable     Information about classes defined in the program.
- * @param function       The function which is being assembled.
- * @param thisBlock      The block which is being assembled.
- * @param hostClass      The possible host class of the function being assembled.
- * @param blocksAfter    The possible blocks which should be jumped to after computing the expression in the form of (ifTrue, ifFalse).
+ * @param symbolStack     The symbol stack to use when assembling an expression.
+ * @param classTable      Information about classes defined in the program.
+ * @param function        The function which is being assembled.
+ * @param thisBlock       The block which is being assembled.
+ * @param hostClass       The possible host class of the function being assembled.
+ * @param blocksAfter     The possible blocks which should be jumped to after computing the expression in the form of (ifTrue, ifFalse).
  */
 class ExpressionAssembler()(
 	using
-	symbolStack: SymbolStack[SymbolSourceInfo],
-	classTable : ClassTable,
-	function   : Function,
-	thisBlock  : Block,
-	hostClass  : Option[String],
-	blocksAfter: Option[(Block, Block)]
+	symbolStack    : SymbolStack[SymbolSourceInfo],
+	classTable     : ClassTable,
+	function       : Function,
+	thisBlock      : Block,
+	hostClass      : Option[String],
+	blocksAfter    : Option[(Block, Block)]
 ) extends LatteBaseVisitor[(DefinedValue, Block)] {
 
 	private def considerJumping(jumpConditionSource: DefinedValue, activeBlock: Block): (DefinedValue, Block) = {
@@ -306,6 +379,26 @@ class ExpressionAssembler()(
 			case None => ()
 		}
 		(jumpConditionSource, activeBlock)
+	}
+
+	// If an expression created a new entity in memory (string, array, or object),
+	// we must register it immediately for memory management.
+	private def registerEntity(pointerSource: Register, thisBlock: Block): Unit = pointerSource.valueType match {
+		case TStr =>
+			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer), TVoid), "@registerString"), pointerRegister)
+		case TArray(underlying) =>
+			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+			val containsPointers = Constant(TBool, if underlying.isInstanceOf[TStr.type | TArray | TClass] then 1 else 0)
+			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer, TBool), TVoid), "@registerArray"), pointerRegister, containsPointers)
+		case TClass(className) =>
+			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
+			val classID = Constant(TInt, classTable(className).classID)
+			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer, TInt), TVoid), "@registerObject"), pointerRegister, classID)
+		case _ => throw GenerationError("Unexpected entity type registered for memory management.")
 	}
 
 	private def operateOnTwoIntegers(l: Long, op: String, r: Long): Constant = op match {
@@ -378,6 +471,7 @@ class ExpressionAssembler()(
 			case (l: Register, "+", r: Register) if l.valueType == TStr && r.valueType == TStr =>
 				val resultSource = Register(TStr, s"%${function.nameGenerator.nextRegister}")
 				thisBlock += Call(resultSource, Label(TFunction(Seq(TStr, TStr), TStr), "@concatenateStrings"), l, r)
+				registerEntity(resultSource, thisBlock)
 				(resultSource, activeBlock)
 			case unexpected => throw GenerationError(s"Unexpected EAddOp case: $unexpected.")
 		}
@@ -484,10 +578,11 @@ class ExpressionAssembler()(
 		thisBlock += PtrToInt(sizeInt, sizePtr)
 		val allocSource = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 		thisBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), Constant(TInt, 1), sizeInt)
-		val classPtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
-		thisBlock += Bitcast(classPtr, allocSource)
-		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)), classPtr)
-		(classPtr, thisBlock)
+		val objectPtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
+		thisBlock += Bitcast(objectPtr, allocSource)
+		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)), objectPtr)
+		registerEntity(objectPtr, thisBlock)
+		(objectPtr, thisBlock)
 	}
 
 	override def visitENewArr(ctx: LatteParser.ENewArrContext): (DefinedValue, Block) = {
@@ -519,6 +614,7 @@ class ExpressionAssembler()(
 		activeBlock += GetElementPtr(ptrValueToReturn, allocSource, Constant(TInt, 8))
 		val ptrRegisterToReturn = Register(TArray(underlyingType), s"%${function.nameGenerator.nextRegister}")
 		activeBlock += Bitcast(ptrRegisterToReturn, ptrValueToReturn)
+		registerEntity(ptrRegisterToReturn, activeBlock)
 		(ptrRegisterToReturn, activeBlock)
 	}
 
@@ -544,7 +640,7 @@ class ExpressionAssembler()(
 			if argType != exprSource.valueType then
 				// We must be dealing with an object subtype.
 				val exprSourceAfterCast = Register(argType, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(exprSourceAfterCast, exprSource.asInstanceOf[Register])
+				activeBlock += Bitcast(exprSourceAfterCast, exprSource)
 				exprSourceAfterCast
 			else
 				exprSource
@@ -574,18 +670,18 @@ class ExpressionAssembler()(
  * The second value in the returned tuple signifies whether a source with the pointer
  * to the writable value was returned instead of the value itself.
  * The third return value is the pointer to a possible host object.
- * @param symbolStack    The symbol stack to use when assembling an expression.
- * @param classTable     Information about classes defined in the program.
- * @param thisBlock      The block which is being assembled.
- * @param hostClass      The possible host class of the function being assembled.
+ * @param symbolStack     The symbol stack to use when assembling an expression.
+ * @param classTable      Information about classes defined in the program.
+ * @param thisBlock       The block which is being assembled.
+ * @param hostClass       The possible host class of the function being assembled.
  */
 class ValueAssembler(
 	using
-	symbolStack: SymbolStack[SymbolSourceInfo],
-	classTable : ClassTable,
-	function   : Function,
-	thisBlock  : Block,
-	hostClass  : Option[String]
+	symbolStack    : SymbolStack[SymbolSourceInfo],
+	classTable     : ClassTable,
+	function       : Function,
+	thisBlock      : Block,
+	hostClass      : Option[String]
 ) extends LatteBaseVisitor[(Source, Boolean, Option[Register], Block)] {
 	override def visitVSelf(ctx: LatteParser.VSelfContext): (Register, Boolean, Option[Register], Block) =
 		(Register(TClass(hostClass.get), NamingConvention.self), false, None, thisBlock)
@@ -631,7 +727,7 @@ class ValueAssembler(
 				// The only member of an array is its length.
 				val arrayLengthSource = ValueAssembler.assembleArrayLength(entitySource, activeBlock)
 				(arrayLengthSource, false, None, activeBlock)
-			case _ => throw new RuntimeException("Unexpected host entity of member value.")
+			case _ => throw GenerationError("Unexpected host entity of member value.")
 		}
 	}
 

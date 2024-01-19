@@ -1,6 +1,7 @@
 testPath="src/test/resources/"
 
 GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
 RED='\033[1;31m'
 NC='\033[0m'
 
@@ -10,12 +11,13 @@ TESTS_PASSED=0
 SUCCESS_STATUS=0
 FAILURE_STATUS=42
 
-runOn () {( set -e
-  exec_path="${1%.lat}"
-  bc_path="${exec_path}.bc"
-  input_path="${exec_path}.input"
-  output_path="${exec_path}.output"
-  test_output_path="${exec_path}.test_output"
+runOn () {(
+  set -e
+  base_path="${1%.lat}"
+  exec_path="${base_path}.e"
+  input_path="${base_path}.input"
+  output_path="${base_path}.output"
+  test_output_path="${base_path}.test_output"
 
   if [ ! -e "${input_path}" ]; then
     input_path=/dev/null
@@ -23,7 +25,14 @@ runOn () {( set -e
 
   ./latc "$1" &> /dev/null
 
-  lli "${bc_path}" < "${input_path}" > "${test_output_path}" || true
+  set +e
+  valgrind --error-exitcode=13 --leak-check=yes "${exec_path}" < "${input_path}" 1> "${test_output_path}" 2> /dev/null
+  executionExitCode=$?
+  set -e
+
+  if (( executionExitCode == 13 )); then
+    echo -e "\t${YELLOW}MEM${NC}"
+  fi
 
   if [ -e "${output_path}" ]; then
     diff "${output_path}" "${test_output_path}"

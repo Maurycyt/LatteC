@@ -53,7 +53,7 @@ trait SymbolInterface {
 object SymbolTableExtension {
 	extension [Info <: SymbolInterface](table: mutable.HashMap[String, Info]) {
 		def combineWith(symbolName: String, symbolInfo: Info): mutable.HashMap[String, Info] = {
-			if (table.contains(symbolName)) {
+			if table.contains(symbolName) then{
 				throw RedeclarationError(symbolInfo.declarationPosition, symbolName, table(symbolName).declarationPosition)
 			}
 			table += symbolName -> symbolInfo
@@ -172,7 +172,7 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
 							throw RetypingError(symbolInfo.declarationPosition, symbolName, symbolInfo.symbolType, previousType, previousPosition = data(symbolName).declarationPosition)
 				}
 			case nonFunction =>
-				if (data.contains(symbolName)) {
+				if data.contains(symbolName) then{
 					throw RedeclarationError(symbolInfo.declarationPosition, symbolName, data(symbolName).declarationPosition)
 				}
 				// We give variables offsets starting at 1 because in a user-defined class, the vtable pointer appears first in the structure.
@@ -214,7 +214,15 @@ class MemberTable(val className: String, private var data: mutable.HashMap[Strin
  * @param memberTable The table of members of a class.
  * @param parent The possible parent class of a class.
  */
-case class ClassTableEntry(memberTable: MemberTable, parent: Option[String])
+case class ClassTableEntry(memberTable: MemberTable, parent: Option[String], classID: Long = ClassTableEntry.nextID)
+
+object ClassTableEntry {
+	private var counter: Long = 0
+	private def nextID: Long = {
+		counter += 1
+		counter
+	}
+}
 
 type ClassTable = mutable.HashMap[String, ClassTableEntry]
 
@@ -224,7 +232,7 @@ object ClassTable {
 
 	extension(classTable: ClassTable) {
 		def copy: ClassTable = {
-			classTable.map { case (className, ClassTableEntry(memberTable, parentName)) => className -> ClassTableEntry(memberTable.copy(), parentName) }
+			classTable.map { case (className, ClassTableEntry(memberTable, parentName, id)) => className -> ClassTableEntry(memberTable.copy(), parentName, id) }
 		}
 
 		def getClassOrThrow(className: String, position: Position): ClassTableEntry = classTable.get(className) match {
@@ -299,13 +307,15 @@ class SymbolStack[Info <: SymbolInterface](inits: mutable.HashMap[String, Info]*
 			symCounts.updateWith(symbolName) { case None => Some(1); case Some(c) => Some(c + 1) }
 		}
 	}
+	
+	def tables: List[Table] = symTables
 
 	def removeScope(): Unit = {
 		val removedSymTable = symTables.head
 		symTables = symTables.tail
-		removedSymTable.keys.foreach { symbolName => symCounts.updateWith(symbolName){
+		removedSymTable.keys.foreach { symbolName => symCounts.updateWith(symbolName) {
 			case Some(c) => Some(c-1)
 			case None => throw RuntimeException("Symbol counts diverged when removing scope.")
-		} }
+		}}
 	}
 }

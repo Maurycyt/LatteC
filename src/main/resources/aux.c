@@ -4,6 +4,19 @@
 #include <string.h>
 #include <stdbool.h>
 
+// Memory management
+
+void registerString(void * ptr);
+void registerArray(void * ptr, bool containsPointers);
+void registerObject(void * ptr, int64_t classID);
+void registerObjectPointerMemberOffset(int64_t classID, int64_t offset);
+
+void increaseRefCount(void * ptr);
+void decreaseRefCount(void * ptr);
+void clearUnboundPointers();
+
+// Predefined
+
 void printInt(int64_t value) {
     printf("%ld\n", value);
 }
@@ -38,8 +51,11 @@ void * readString() {
     }
     line = realloc(line, bytesRead);
     ((char *)line)[bytesRead - 1] = '\0';
+    registerString(line);
     return line;
 }
+
+// Auxiliary
 
 void * concatenateStrings(void * str1, void * str2) {
     size_t len1 = strlen(str1);

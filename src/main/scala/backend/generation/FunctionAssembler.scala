@@ -1,7 +1,7 @@
 package backend.generation
 
 import backend.representation.{Constant, Function, Label, Register}
-import frontend.checks.symbols.{ClassTable, SymbolInterface, SymbolStack}
+import frontend.checks.symbols.{ClassTable, SymbolStack}
 import frontend.checks.types.{LatteType, TypeCollector}
 import frontend.checks.types.LatteType.{TClass, TFunction, TVoid}
 import grammar.{LatteBaseVisitor, LatteParser}
@@ -75,15 +75,20 @@ class FunctionAssembler()(
 						name,
 						None,
 						if anyType != TVoid then
-							Register(anyType, if name == "%self" then "%self" else s"%${nameGenerator.nextRegister}")
+							Register(anyType, if name == NamingConvention.self then "%self" else s"%${nameGenerator.nextRegister}")
 						else
 							Constant(anyType, 0))
 				}
 			)
 
 		// Assemble function.
-		val assembledFunction: Function = Function(functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
-		assembledFunction.addBlock(Some("entry"))
+		val assembledFunction: Function = Function(functionName, functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
+		val entryBlock = assembledFunction.addBlock(Some("entry"))
+		StatementAssembler.increaseReferenceCounts(
+			newScope.values.filterNot(Seq(NamingConvention.self, functionName).contains).map(_.source),
+			assembledFunction,
+			entryBlock
+		)
 
 		symbolStack.addScope(newScope)
 		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)

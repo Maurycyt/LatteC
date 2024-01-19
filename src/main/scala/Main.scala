@@ -16,7 +16,7 @@ import java.nio.file.Path
 import scala.sys.process.Process
 
 def exitWithError(message: String, status: Int = 42): Unit = {
-	if (message.nonEmpty) {
+	if message.nonEmpty then{
 		System.err.println(message)
 	}
 	System.exit(status)
@@ -97,14 +97,18 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Finally, compile.
 		Process(Seq("llvm-as", getPath("ll").toString, "-o", getPath("bc").toString)).!!
-		Process(Seq("llvm-link", getPath("bc").toString, "src/main/resources/aux.bc", "-o", getPath("bc").toString)).!!
+		Process(Seq("llvm-link", getPath("bc").toString, "src/main/resources/aux.bc", "src/main/resources/mem.bc", "-o", getPath("bc").toString)).!!
+		// Create an executable too, for testing purposes.
+		Process(Seq("llc", "-filetype=obj", getPath("bc").toString, "-o", getPath("o").toString)).!!
+		Process(Seq("clang++", "-no-pie", getPath("o").toString, "-o", getPath("e").toString)).!!
+		Process(Seq("rm", getPath("o").toString)).!!
 
 	} catch {
 
 		case ptg: ParseTreeGenerator.ParseTreeGeneratorException =>
 			exitWithError(s"${Console.BOLD}${Console.RED}WRONG!\n${ptg.getMessage}\nCause:\n${ptg.cause}${Console.RESET}")
 		case f: FrontendError =>
-			if (debugFlag) f.printStackTrace()
+			if debugFlag then f.printStackTrace()
 			val fileReader = scala.io.Source.fromFile(inputFileString)
 			val line: String = fileReader.getLines.drop(f.position.line - 1).nextOption.getOrElse("")
 			exitWithError(s"""

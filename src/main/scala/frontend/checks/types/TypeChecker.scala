@@ -138,7 +138,7 @@ class ExpressionTypeChecker(using symbolStack: SymbolStack[SymbolInfo], classNam
 		visit(ctx.value) match {
 			case TFunction(expectedArgTypes, resultType) =>
 				val argExprs: Seq[LatteParser.ExprContext] = ctx.expr.asScala.toSeq
-				if (expectedArgTypes.size != argExprs.size) throw new FrontendError {
+				if expectedArgTypes.size != argExprs.size then throw new FrontendError {
 					override val position: Position = Position.fromToken(ctx.stop)
 					override val message: String = s"Function applied to ${argExprs.size} arguments when ${expectedArgTypes.size} were expected."
 				}
@@ -255,7 +255,7 @@ class StatementTypeChecker(
 		ctx.item.asScala.foreach { itemCtx =>
 			val itemSymbol = itemCtx.ID.getSymbol
 			val itemName = itemSymbol.getText
-			if (itemCtx.expr != null) ExpressionTypeChecker().matchExprTypeWithExpected(itemCtx.expr, Seq(itemType))
+			if itemCtx.expr != null then ExpressionTypeChecker().matchExprTypeWithExpected(itemCtx.expr, Seq(itemType))
 			addSymbol(SymbolInfo(Position.fromToken(itemSymbol), itemName, itemType))
 		}
 		Ignored

@@ -104,8 +104,8 @@ case class BitcastStringConstant(dst: Register, stringConstant: String) extends 
 	override def replaceDst(newDst: Register): BitcastStringConstant = copy(dst = newDst)
 }
 
-case class Bitcast(dst: Register, arg: Register) extends Assignment {
-	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue.asInstanceOf[Register]) else this
+case class Bitcast(dst: Register, arg: DefinedValue) extends Assignment {
+	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): Bitcast = copy(dst = newDst)
 }
 
@@ -198,6 +198,7 @@ class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]
 // Functions
 
 class Function(
+	val name: String,
 	val nameInLLVM: String,
 	val returnType: CompilerType,
 	val arguments: Seq[String],

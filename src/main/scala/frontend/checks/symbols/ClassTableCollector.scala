@@ -35,7 +35,7 @@ class ClassTableCollector(using hierarchyTable: HierarchyTable) extends LatteBas
 
 			// If the class wasn't filled yet, fill it.
 			// If the class has a parent, fill them first.
-			if (!resultTable.contains(targetClass)) {
+			if !resultTable.contains(targetClass) then {
 				hierarchyTable(targetClass)._2 match {
 					case None =>
 						resultTable.put(targetClass, ClassTableEntry(MemberTable(targetClass), None))

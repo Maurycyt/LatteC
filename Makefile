@@ -1,8 +1,6 @@
 MAIN_CLASSPATH=target/scala-3.3.1/classes/
 INCLUDE_CLASSPATH=-cp ${MAIN_CLASSPATH} -cp `cat dependencies.cp`
 
-MAIN_ARGS= # To be supplied by the calling script
-
 ARCHIVE_NAME=mw429680
 
 all: ${MAIN_CLASSPATH}main.built
@@ -12,7 +10,12 @@ src/main/resources/aux.bc: src/main/resources/aux.c
 	@llvm-as src/main/resources/aux.ll -o src/main/resources/aux.bc
 	@rm src/main/resources/aux.ll
 
-${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala") src/main/resources/aux.bc
+src/main/resources/mem.bc: src/main/resources/mem.cpp
+	@clang -std=c++20 src/main/resources/mem.cpp -S -emit-llvm -o src/main/resources/mem.ll
+	@llvm-as src/main/resources/mem.ll -o src/main/resources/mem.bc
+	@rm src/main/resources/mem.ll
+
+${MAIN_CLASSPATH}main.built: src/main/resources/Latte.g4 $(shell find src/main/scala -type f -name "*.scala") src/main/resources/aux.bc src/main/resources/mem.bc
 	make build
 	@echo -n '#!/bin/bash\n\nDEBUG=false\nif [ "$$2" = "--debug" ]\nthen\n\tDEBUG=true\nfi\n\n' > latc
 	@echo "scala ${INCLUDE_CLASSPATH}" 'main "$$1" "$$DEBUG"' >> latc

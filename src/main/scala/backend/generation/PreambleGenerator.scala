@@ -20,6 +20,15 @@ object PreambleGenerator {
 				 |declare ${CTAnyPointer.toLLVM} @calloc(${TInt.toLLVM}, ${TInt.toLLVM})
 				 |declare ${TVoid.toLLVM} @free(${CTAnyPointer.toLLVM})
 				 |
+				 |declare ${TVoid.toLLVM} @registerString(${CTAnyPointer.toLLVM})
+				 |declare ${TVoid.toLLVM} @registerArray(${CTAnyPointer.toLLVM}, ${TBool.toLLVM})
+				 |declare ${TVoid.toLLVM} @registerObject(${CTAnyPointer.toLLVM}, ${TInt.toLLVM})
+				 |declare ${TVoid.toLLVM} @registerObjectPointerMemberOffset(${TInt.toLLVM}, ${TInt.toLLVM})
+				 |
+				 |declare ${TVoid.toLLVM} @increaseRefCount(${CTAnyPointer.toLLVM})
+				 |declare ${TVoid.toLLVM} @decreaseRefCount(${CTAnyPointer.toLLVM})
+				 |declare ${TVoid.toLLVM} @clearUnboundPointers()
+				 |
 				 |define i32 @main() {
 				 |\t%result64 = call ${TInt.toLLVM} ${NamingConvention.function("main")}()
 				 |\t%result32 = trunc ${TInt.toLLVM} %result64 to i32

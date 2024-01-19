@@ -56,6 +56,7 @@ object ClassRepresentationBuilder {
 		val thisRegister = Register(TClass(className), "%this")
 		val function = Function(
 			constructor(className),
+			constructor(className),
 			TVoid,
 			Seq("%this"),
 			mutable.HashMap("%this" -> SymbolSourceInfo("%this", None, thisRegister)),
