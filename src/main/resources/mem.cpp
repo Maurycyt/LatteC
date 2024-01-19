@@ -123,6 +123,7 @@ extern "C" {
 
 	void registerObject(void * ptr, int64_t classID) {
 	    referenceMap.emplace(ptr, new ObjectReferenceManager(ptr, classID));
+//	    printf("\t\tRegistering object %p (%d).\n", ptr, classID);
 	    unboundPointers.insert(ptr);
 	}
 

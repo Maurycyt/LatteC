@@ -85,7 +85,7 @@ class FunctionAssembler()(
 		val assembledFunction: Function = Function(functionName, functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
 		val entryBlock = assembledFunction.addBlock(Some("entry"))
 		StatementAssembler.increaseReferenceCounts(
-			newScope.values.filterNot(Seq(NamingConvention.self, functionName).contains).map(_.source),
+			newScope.collect { case (name, sourceInfo) if !Seq(NamingConvention.self, functionName).contains(name) => sourceInfo.source },
 			assembledFunction,
 			entryBlock
 		)

@@ -13,3 +13,4 @@ target/
 *.o
 *.s
 *.e
+*.test_output

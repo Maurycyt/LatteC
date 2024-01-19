@@ -78,6 +78,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Assemble constructors and transcribe them to LLVM IR.
 		val classConstructors = ClassRepresentationBuilder.buildClasses
+		if classTable.nonEmpty then fw write "\n\n"
 		Transcriber().transcribeFunctions(classConstructors)
 		if classConstructors.nonEmpty then fw write "\n\n"
 

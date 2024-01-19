@@ -18,6 +18,9 @@ jobs:
           curl -s "https://get.sdkman.io" | bash
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install scala
+      - name: Install Valgrind
+        run: |
+          apt install -y valgrind
       - name: Add llvm-as to PATH
         run: |
           echo "/usr/lib/llvm-14/bin" >> $GITHUB_PATH

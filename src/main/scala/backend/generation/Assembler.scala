@@ -56,7 +56,7 @@ class StatementAssembler()(
 			else
 				val sourceInfos = symbolTable.values.toSeq
 				decreaseReferenceCounts(
-					sourceInfos.filterNot(Seq(NamingConvention.self, function.name).contains).map(_.source),
+					sourceInfos.collect { case info if !Seq(NamingConvention.self, function.name).contains(info.symbolName) => info.source},
 					function,
 					block
 				)
