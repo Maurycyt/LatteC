@@ -462,7 +462,7 @@ class ExpressionAssembler()(
 		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL).visit(ctx.expr(1))
 
 		// Compute result.
-		(subExpressionSourceL, ctx.addOp.getText, subExpressionSourceR) match {
+		(subExpressionSourceL, ctx.addOp().getText, subExpressionSourceR) match {
 			case (Constant(TInt, l), op, Constant(TInt, r)) => (operateOnTwoIntegers(l, op, r), activeBlock)
 			case (l: DefinedValue, op, r: DefinedValue) if l.valueType == TInt && r.valueType == TInt =>
 				val resultSource = Register(TInt, s"%${function.nameGenerator.nextRegister}")
@@ -592,16 +592,13 @@ class ExpressionAssembler()(
 
 		val sizeToCalloc = underlyingType match {
 			case TVoid =>
-				// Only 8 bytes for the length.
-				Constant(TInt, 8)
+				// Only 1 value: the length.
+				Constant(TInt, 1)
 			case _ =>
-				// Each element of an array takes up 8 bytes.
+				// Add 1 value: the length.
 				val r1 = Register(TInt, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += BinOp(r1, arraySizeValue, Mul, Constant(TInt, 8))
-				// Add 8 bytes for the length.
-				val r2 = Register(TInt, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += BinOp(r2, r1, Plus, Constant(TInt, 8))
-				r2
+				activeBlock += BinOp(r1, arraySizeValue, Plus, Constant(TInt, 1))
+				r1
 		}
 		val allocSource = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 		activeBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), sizeToCalloc, Constant(TInt, 8))

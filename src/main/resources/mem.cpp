@@ -94,7 +94,7 @@ protected:
             return;
 
         for (int64_t offset : pointerOffsetsInObjects[classID]) {
-            void * * pointerPointer = (void * *)reference + offset;
+            void * * pointerPointer = (void * *)((char *)reference + offset);
             decreaseRefCount(*pointerPointer);
         }
         free(reference);

@@ -11,8 +11,8 @@ class Transcriber(
 	fw: FileWriter,
 	stringMapping: Map[String, (Int, Label)]
 ) {
-	def transcribeFunctions(functions: Set[Function]): Unit = {
-		val functionsSeq = functions.toSeq
+	def transcribeFunctions(functions: Seq[Function]): Unit = {
+		val functionsSeq = functions
 		if functionsSeq.nonEmpty then transcribeFunction(functionsSeq.head)
 		for (i <- 1 until functionsSeq.size) do {
 			fw write "\n\n"

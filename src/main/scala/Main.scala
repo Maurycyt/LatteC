@@ -90,7 +90,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 					symbolName -> SymbolSourceInfo(symbolName, None, Label(symbolInfo.symbolType, symbolNameInLLVM))
 			}
 		)
-		val functions: Set[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program)
+		val functions: Seq[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program).toSeq
 		functions.foreach { function => Normaliser()(using function).processFunction() }
 		Transcriber().transcribeFunctions(functions)
 

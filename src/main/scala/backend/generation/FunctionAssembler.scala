@@ -1,6 +1,6 @@
 package backend.generation
 
-import backend.representation.{Constant, Function, Label, Register}
+import backend.representation.{Constant, Function, Label, Register, ReturnVoid}
 import frontend.checks.symbols.{ClassTable, SymbolStack}
 import frontend.checks.types.{LatteType, TypeCollector}
 import frontend.checks.types.LatteType.{TClass, TFunction, TVoid}
@@ -65,7 +65,7 @@ class FunctionAssembler()(
 				}
 			)
 
-		val newScope =
+		val argScope =
 			// The function itself, for recursion.
 			mutable.HashMap(functionName -> functionSourceInfo) ++
 			// The arguments.
@@ -82,16 +82,23 @@ class FunctionAssembler()(
 			)
 
 		// Assemble function.
-		val assembledFunction: Function = Function(functionName, functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), newScope, hostClass, nameGenerator)
+		val assembledFunction: Function = Function(functionName, functionNameInLLVM, functionType.result, argsWithTypes.filterNot(_._2 == TVoid).map(_._1), argScope, hostClass, nameGenerator)
 		val entryBlock = assembledFunction.addBlock(Some("entry"))
 		StatementAssembler.increaseReferenceCounts(
-			newScope.collect { case (name, sourceInfo) if !Seq(NamingConvention.self, functionName).contains(name) => sourceInfo.source },
+			argScope.collect { case (name, sourceInfo) if !Seq(NamingConvention.self, functionName).contains(name) => sourceInfo.source },
 			assembledFunction,
 			entryBlock
 		)
 
-		symbolStack.addScope(newScope)
-		StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
+		symbolStack.addScope(argScope)
+		val (lastBlock, brokeFlow) = StatementAssembler(using symbolStack, classTable, assembledFunction, assembledFunction.getBlock(0), hostClass, None).visitBlock(ctx.block)
+		if functionType.result == TVoid && !brokeFlow then
+			StatementAssembler.decreaseReferenceCounts(
+				argScope.collect { case (name, sourceInfo) if !Seq(NamingConvention.self, functionName).contains(name) => sourceInfo.source },
+				assembledFunction,
+				lastBlock
+			)
+			lastBlock += ReturnVoid
 		symbolStack.removeScope()
 
 		// Return function.

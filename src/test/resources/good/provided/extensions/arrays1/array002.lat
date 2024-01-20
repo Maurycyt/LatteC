@@ -16,7 +16,6 @@ void shiftLeft (int [] a){
     i ++ ;
   }
   a[a.length - 1]= x ;
-  return;
  }
 
 int scalProd(int[] a, int[] b) {

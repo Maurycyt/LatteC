@@ -11,6 +11,7 @@ object NamingConvention {
 	def method(className: String, methodName: String): String = s"@method.$className.$methodName"
 	def vTable(className: String): String = s"@vTable.$className"
 	def constructor(className: String): String = s"@constructor.$className"
+	def offsetCollector(className: String): String = s"@offsetCollector.$className"
 
 	// The number of dots corresponds with the number of shadows of the given name.
 	// An additional "copy" parameter specifies which
