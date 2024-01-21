@@ -1,4 +1,5 @@
 import backend.generation.*
+import backend.optimisation.Optimiser
 import backend.representation.{Function, Label}
 import backend.transcription.Transcriber
 import frontend.{FrontendError, Position}
@@ -78,6 +79,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Assemble constructors and transcribe them to LLVM IR.
 		val classConstructors = ClassRepresentationBuilder.buildClasses
+		classConstructors.foreach(Optimiser.optimizeFunction)
 		if classTable.nonEmpty then fw write "\n\n"
 		Transcriber().transcribeFunctions(classConstructors)
 		if classConstructors.nonEmpty then fw write "\n\n"
@@ -92,6 +94,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		)
 		val functions: Seq[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program).toSeq
 		functions.foreach { function => Normaliser()(using function).processFunction() }
+		functions.foreach(Optimiser.optimizeFunction)
 		Transcriber().transcribeFunctions(functions)
 
 		fw.close()

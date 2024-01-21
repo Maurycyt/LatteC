@@ -207,6 +207,7 @@ class Function(
 	val nameGenerator: NameGenerator
 ) {
 	val blocks: mutable.ArrayBuffer[Block] = mutable.ArrayBuffer.empty
+	def nonNullBlocks: Seq[Block] = blocks.filterNot(_ == null).toSeq
 	private val blockNameToIndex: mutable.HashMap[String, Int] = mutable.HashMap.empty
 
 	private val blockJumpsFrom: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
@@ -222,6 +223,7 @@ class Function(
 	}
 
 	def removeBlock(blockIdx: Int): Unit = {
+		blockJumpsFrom(blockIdx).toSeq.foreach { blockTo => removeJump(blockIdx, blockTo) }
 		blocks(blockIdx) = null
 		blockJumpsFrom(blockIdx) = mutable.ArrayBuffer.empty
 		blockJumpsTo.mapInPlace(_.filterInPlace(_ != blockIdx))
@@ -232,8 +234,49 @@ class Function(
 		blockJumpsTo(blockTo).append(blockFrom)
 	}
 
-	def addJump(blockFromName: String, blockToName: String): Unit = {
+	def addJump(blockFromName: String, blockToName: String): Unit =
 		addJump(blockNameToIndex(blockFromName), blockNameToIndex(blockToName))
+
+	def removeJump(blockFrom: Int, blockTo: Int): Unit = {
+		if blocks(blockFrom) == null then return
+		blockJumpsFrom(blockFrom).filterInPlace(_ != blockTo)
+		blockJumpsTo(blockTo).filterInPlace(_ != blockFrom)
+		val b = blocks(blockTo)
+		if b != null then
+			b.instructions.indices.foreach { iIdx =>
+				val i = b.instructions(iIdx)
+				if i != null then i match {
+					case p: Phi => b.instructions(iIdx) = Phi(p.dst, p.cases.filter( _.blockName != blocks(blockFrom).name ): _*)
+					case _ =>
+				}
+			}
+	}
+
+	def removeJump(blockFromName: String, blockToName: String): Unit =
+		removeJump(blockNameToIndex(blockFromName), blockNameToIndex(blockToName))
+
+	def collapseJump(blockFromName: String, blockToName: String): Unit = {
+		val blockFrom = blockNameToIndex(blockFromName)
+		val blockTo = blockNameToIndex(blockToName)
+		// Copy instructions.
+		blocks(blockFrom).instructions.dropRightInPlace(1).appendAll(blocks(blockTo).instructions)
+		// Copy block jump information.
+		blockJumpsFrom(blockFrom) = blockJumpsFrom(blockTo)
+		// Clear removed block and its jump information.
+		blocks(blockTo) = null
+		blockJumpsTo(blockTo) = mutable.ArrayBuffer.empty
+		blockJumpsFrom(blockTo) = mutable.ArrayBuffer.empty
+		// Correct phi cases.
+		for (blockIdx <- blockJumpsFrom(blockFrom); iIdx <- blocks(blockIdx).instructions.indices) do {
+			blocks(blockIdx).instructions(iIdx) match {
+				case p: Phi =>
+					blocks(blockIdx).instructions(iIdx) = Phi(
+						p.dst,
+						p.cases.map { pc => PhiCase( if pc.blockName == blockToName then blockFromName else pc.blockName, pc.value) }: _*
+					)
+				case _ =>
+			}
+		}
 	}
 
 	def numBlocks: Int = blocks.size

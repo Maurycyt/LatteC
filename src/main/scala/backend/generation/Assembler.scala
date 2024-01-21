@@ -335,6 +335,24 @@ class ItemAssembler(
 	}
 }
 
+object ExpressionAssembler {
+	def operateOnTwoIntegers(l: Long, op: BinaryOperator, r: Long): Constant = op match {
+		case Plus  => Constant(TInt, l + r)
+		case Minus => Constant(TInt, l - r)
+		case Mul   => Constant(TInt, l * r)
+		case Div   => Constant(TInt, l / r)
+		case Mod   => Constant(TInt, l % r)
+		case Eq    => Constant(TBool, if l == r then 1 else 0)
+		case Ne    => Constant(TBool, if l != r then 1 else 0)
+		case Lt    => Constant(TBool, if l < r then 1 else 0)
+		case Le    => Constant(TBool, if l <= r then 1 else 0)
+		case Gt    => Constant(TBool, if l > r then 1 else 0)
+		case Ge    => Constant(TBool, if l >= r then 1 else 0)
+		case And   => Constant(TBool, if l == 1 && r == 1 then 1 else 0)
+		case Or    => Constant(TBool, if l == 1 || r == 1 then 1 else 0)
+	}
+}
+
 /**
  * Assembles expressions in non-SSA form.
  * This visitor returns the Source of the result of the expression, and the active block where the source is to be used.
@@ -354,7 +372,7 @@ class ExpressionAssembler()(
 	hostClass      : Option[String],
 	blocksAfter    : Option[(Block, Block)]
 ) extends LatteBaseVisitor[(DefinedValue, Block)] {
-
+	import ExpressionAssembler.*
 	private def considerJumping(jumpConditionSource: DefinedValue, activeBlock: Block): (DefinedValue, Block) = {
 		blocksAfter match {
 			case Some((jumpIfTrue, jumpIfFalse)) =>
@@ -401,20 +419,6 @@ class ExpressionAssembler()(
 		case _ => throw GenerationError("Unexpected entity type registered for memory management.")
 	}
 
-	private def operateOnTwoIntegers(l: Long, op: String, r: Long): Constant = op match {
-		case "+"  => Constant(TInt, l + r)
-		case "-"  => Constant(TInt, l - r)
-		case "*"  => Constant(TInt, l * r)
-		case "/"  => Constant(TInt, l / r)
-		case "%"  => Constant(TInt, l % r)
-		case "==" => Constant(TBool, if l == r then 1 else 0)
-		case "!=" => Constant(TBool, if l != r then 1 else 0)
-		case "<"  => Constant(TBool, if l < r  then 1 else 0)
-		case "<=" => Constant(TBool, if l <= r then 1 else 0)
-		case ">"  => Constant(TBool, if l > r  then 1 else 0)
-		case ">=" => Constant(TBool, if l >= r then 1 else 0)
-	}
-
 	override def visitEUnOp(ctx: LatteParser.EUnOpContext): (DefinedValue, Block) = ctx.unOp.getText match {
 		case "-" =>
 			// When taking the inverse, compute subexpression, then compute result.
@@ -446,11 +450,11 @@ class ExpressionAssembler()(
 		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL).visit(ctx.expr(1))
 
 		// Compute result.
-		(subExpressionSourceL, ctx.mulOp.getText, subExpressionSourceR) match {
+		(subExpressionSourceL, BinaryOperator.from(ctx.mulOp.getText), subExpressionSourceR) match {
 			case (Constant(TInt, l), op, Constant(TInt, r)) => (operateOnTwoIntegers(l, op, r), activeBlock)
 			case (l: DefinedValue, op, r: DefinedValue) if l.valueType == TInt && r.valueType == TInt =>
 				val resultSource = Register(TInt, s"%${function.nameGenerator.nextRegister}")
-				thisBlock += BinOp(resultSource, l, BinaryOperator.from(op), r)
+				thisBlock += BinOp(resultSource, l, op, r)
 				(resultSource, activeBlock)
 			case unexpected => throw GenerationError(s"Unexpected EMulOp case: $unexpected.")
 		}
@@ -462,13 +466,13 @@ class ExpressionAssembler()(
 		val (subExpressionSourceR, activeBlock) = ExpressionAssembler()(using thisBlock = activeBlockL).visit(ctx.expr(1))
 
 		// Compute result.
-		(subExpressionSourceL, ctx.addOp().getText, subExpressionSourceR) match {
+		(subExpressionSourceL, BinaryOperator.from(ctx.addOp().getText), subExpressionSourceR) match {
 			case (Constant(TInt, l), op, Constant(TInt, r)) => (operateOnTwoIntegers(l, op, r), activeBlock)
 			case (l: DefinedValue, op, r: DefinedValue) if l.valueType == TInt && r.valueType == TInt =>
 				val resultSource = Register(TInt, s"%${function.nameGenerator.nextRegister}")
-				thisBlock += BinOp(resultSource, l, BinaryOperator.from(op), r)
+				thisBlock += BinOp(resultSource, l, op, r)
 				(resultSource, activeBlock)
-			case (l: Register, "+", r: Register) if l.valueType == TStr && r.valueType == TStr =>
+			case (l: Register, Plus, r: Register) if l.valueType == TStr && r.valueType == TStr =>
 				val resultSource = Register(TStr, s"%${function.nameGenerator.nextRegister}")
 				thisBlock += Call(resultSource, Label(TFunction(Seq(TStr, TStr), TStr), "@concatenateStrings"), l, r)
 				registerEntity(resultSource, thisBlock)
@@ -479,7 +483,7 @@ class ExpressionAssembler()(
 
 	override def visitERelOp(ctx: LatteParser.ERelOpContext): (DefinedValue, Block) = {
 		// Get operation appropriate for the context.
-		val operationToCompute = ctx.relOp.getText
+		val operationToCompute = BinaryOperator.from(ctx.relOp.getText)
 
 		// Compute subexpressions forgetting about boolean negation.
 		val (subExpressionSourceL, activeBlockL) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr(0))
@@ -490,13 +494,13 @@ class ExpressionAssembler()(
 		val resultSource = (subExpressionSourceL, operationToCompute, subExpressionSourceR) match {
 			case (Constant(tl, l), op, Constant(tr, r)) if tl == tr && Seq(TInt, TBool, TVoid).contains(tl) => operateOnTwoIntegers(l, op, r)
 			case (l: DefinedValue, op, r: DefinedValue) if l.valueType == TInt && r.valueType == TInt =>
-				thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
+				thisBlock += BinOp(resultRegister, l, op, r)
 				resultRegister
-			case (l: DefinedValue, op, r: DefinedValue) if Seq("==", "!=").contains(op) && l.valueType == r.valueType =>
+			case (l: DefinedValue, op, r: DefinedValue) if Seq(Eq, Ne).contains(op) && l.valueType == r.valueType =>
 				if l.valueType == TStr then
 					thisBlock += Call(resultRegister, Label(TFunction(Seq(TStr, TStr), TBool), "@compareStrings"), l, r)
 				else
-					thisBlock += BinOp(resultRegister, l, BinaryOperator.from(op), r)
+					thisBlock += BinOp(resultRegister, l, op, r)
 				resultRegister
 			case unexpected => throw GenerationError(s"Unexpected ERelOp case: $unexpected.")
 		}
