@@ -6,22 +6,6 @@ import frontend.checks.types.LatteType.TVoid
 import scala.collection.mutable
 
 object CommonSubexpressionOptimiser {
-  private sealed trait Domination {
-    def withMemoryModification: Domination = this
-    def combineWith(other: Domination): Domination = this
-  }
-  private object Domination {
-    case object FullDomination extends Domination {
-      override def withMemoryModification: Domination = MemoryModifying
-      override def combineWith(other: Domination): Domination = other
-    }
-    case object MemoryModifying extends Domination {
-      override def combineWith(other: Domination): Domination = if other == NoDomination then NoDomination else this
-    }
-    case object NoDomination extends Domination
-  }
-  import Domination.*
-  
   def optimiseFunction(using function: Function): Boolean = {
     var somethingChanged = false
     var stop = false
@@ -42,6 +26,25 @@ object CommonSubexpressionOptimiser {
   private def eliminateNullInstructions(using function: Function): Unit = {
     function.nonNullBlocks.foreach(_.removeNulls())
   }
+
+  private sealed trait Domination {
+    def withMemoryModification: Domination = this
+
+    def combineWith(other: Domination): Domination = this
+  }
+
+  private object Domination {
+    case object FullDomination extends Domination {
+      override def withMemoryModification: Domination = MemoryModifying
+      override def combineWith(other: Domination): Domination = other
+    }
+    case object MemoryModifying extends Domination {
+      override def combineWith(other: Domination): Domination = if other == NoDomination then NoDomination else this
+    }
+    case object NoDomination extends Domination
+  }
+
+  import Domination.*
 
   private type DominationTable = Array[Array[Domination]]
 
