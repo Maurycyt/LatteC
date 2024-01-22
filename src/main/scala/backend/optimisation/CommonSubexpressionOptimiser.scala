@@ -1,7 +1,6 @@
 package backend.optimisation
 
-import backend.optimisation.CommonSubexpressionOptimiser.substitute
-import backend.representation.{Assignment, Copy, Function, MemoryIndependentAssignment, MemoryUnmodifyingInstruction, Register}
+import backend.representation.{Assignment, Copy, Function, MemoryIndependentAssignment, MemoryUnmodifyingAssignment, MemoryUnmodifyingInstruction, Register}
 import frontend.checks.types.LatteType.TVoid
 
 import scala.collection.mutable
@@ -53,23 +52,27 @@ object CommonSubexpressionOptimiser {
 
     val removedInstructions: mutable.Set[(Int, Int)] = mutable.Set.empty
     for (similarInstructions <- commonSubexpressions;
-         firstInstructionIdxs <- similarInstructions) do {
-      if !removedInstructions.contains(firstInstructionIdxs) then
-        for secondInstructionIdxs <- similarInstructions do {
-          if secondInstructionIdxs != firstInstructionIdxs then
-            val domination = checkInstructionDomination(firstInstructionIdxs, secondInstructionIdxs, prefixDominationInBlocks, suffixDominationInBlocks, dominationBetweenBlocks)
-            val firstInstruction: Assignment = function.blocks(firstInstructionIdxs._1).instructions(firstInstructionIdxs._2).asInstanceOf[Assignment]
-            val secondInstruction: Assignment = function.blocks(secondInstructionIdxs._1).instructions(secondInstructionIdxs._2).asInstanceOf[Assignment]
-            (domination, secondInstruction) match {
-              case (FullDomination, _) =>
-                somethingChanged = true
-                substitute(Copy(secondInstruction.dst, firstInstruction.dst))
-              case (MemoryModifying, _: MemoryIndependentAssignment) =>
-                somethingChanged = true
-                substitute(Copy(secondInstruction.dst, firstInstruction.dst))
-              case _ =>
-            }
+         firstInstructionIdxs <- similarInstructions;
+         secondInstructionIdxs <- similarInstructions) do {
+      if secondInstructionIdxs != firstInstructionIdxs && !removedInstructions.contains(firstInstructionIdxs) && !removedInstructions.contains(secondInstructionIdxs) then {
+        val domination = checkInstructionDomination(firstInstructionIdxs, secondInstructionIdxs, prefixDominationInBlocks, suffixDominationInBlocks, dominationBetweenBlocks)
+        val firstInstruction: Assignment = function.blocks(firstInstructionIdxs._1).instructions(firstInstructionIdxs._2).asInstanceOf[Assignment]
+        val secondInstruction: Assignment = function.blocks(secondInstructionIdxs._1).instructions(secondInstructionIdxs._2).asInstanceOf[Assignment]
+        (domination, secondInstruction) match {
+          // We can only substitute assignments which do not modify memory.
+          case (FullDomination, _: MemoryUnmodifyingAssignment) =>
+            function.blocks(secondInstructionIdxs._1).instructions(secondInstructionIdxs._2) = null
+            removedInstructions.add(secondInstructionIdxs)
+            somethingChanged = true
+            substitute(Copy(secondInstruction.dst, firstInstruction.dst))
+          case (MemoryModifying, _: MemoryIndependentAssignment) =>
+            somethingChanged = true
+            function.blocks(secondInstructionIdxs._1).instructions(secondInstructionIdxs._2) = null
+            removedInstructions.add(secondInstructionIdxs)
+            substitute(Copy(secondInstruction.dst, firstInstruction.dst))
+          case _ =>
         }
+      }
     }
 
     eliminateNullInstructions
@@ -88,21 +91,23 @@ object CommonSubexpressionOptimiser {
 
     for (blockIdx <- function.blocks.indices) do {
       val block = function.blocks(blockIdx)
-      val liIdx = block.instructions.length - 1 // last instruction index
       if block != null then {
+        val liIdx = block.instructions.length - 1 // last instruction index
+        prefixDominationInBlocks(blockIdx) = Array.fill(block.instructions.length)(NoDomination)
+        suffixDominationInBlocks(blockIdx) = Array.fill(block.instructions.length)(NoDomination)
         prefixDominationInBlocks(blockIdx)(0) = FullDomination
         suffixDominationInBlocks(blockIdx)(liIdx) = FullDomination
 
         for (i <- 1 to liIdx) do {
           val pInstr = block.instructions(i)
-          val sInstr = block.instructions(liIdx - i)
           prefixDominationInBlocks(blockIdx)(i) = pInstr match {
             case u: MemoryUnmodifyingInstruction => prefixDominationInBlocks(blockIdx)(i - 1)
             case _ => prefixDominationInBlocks(blockIdx)(i - 1).withMemoryModification
           }
-          prefixDominationInBlocks(blockIdx)(liIdx - i) = pInstr match {
-            case u: MemoryUnmodifyingInstruction => prefixDominationInBlocks(blockIdx)(liIdx - i + 1)
-            case _ => prefixDominationInBlocks(blockIdx)(liIdx - i + 1).withMemoryModification
+          val sInstr = block.instructions(liIdx - i)
+          suffixDominationInBlocks(blockIdx)(liIdx - i) = sInstr match {
+            case u: MemoryUnmodifyingInstruction => suffixDominationInBlocks(blockIdx)(liIdx - i + 1)
+            case _ => suffixDominationInBlocks(blockIdx)(liIdx - i + 1).withMemoryModification
           }
         }
 
@@ -111,20 +116,23 @@ object CommonSubexpressionOptimiser {
     }
     
     val nnIndices = function.nonNullBlockIndices
-    
-    for (
-      iteration <- nnIndices;
-      blockBelow <- nnIndices;
-      blockAbove <- nnIndices
+
+    for (iteration <- nnIndices;
+         blockBelow <- nnIndices;
+         blockAbove <- nnIndices
     ) do {
       dominationBetweenBlocks(blockAbove)(blockBelow) =
-        function.getBlockJumpsTo(blockBelow).foldLeft(FullDomination: Domination) { (domination, precedingBlock) =>
-          domination.combineWith(
-            if precedingBlock == blockAbove then
-              FullDomination
-            else
-              dominationAcrossBlock(precedingBlock).combineWith(dominationBetweenBlocks(blockAbove)(precedingBlock)))
-        }
+        if function.getBlockJumpsTo(blockBelow).isEmpty then
+          NoDomination
+        else
+          function.getBlockJumpsTo(blockBelow).foldLeft(FullDomination: Domination) { (domination, precedingBlock) =>
+            domination.combineWith(
+              if precedingBlock == blockAbove then
+                FullDomination
+              else
+                dominationAcrossBlock(precedingBlock).combineWith(dominationBetweenBlocks(blockAbove)(precedingBlock))
+            )
+          }
     }
 
     (prefixDominationInBlocks, suffixDominationInBlocks, dominationBetweenBlocks)

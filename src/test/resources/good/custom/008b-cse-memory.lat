@@ -1,0 +1,19 @@
+int main () {
+    int x = readInt();
+    int[] a = new int[x];
+
+    a[x-1] = readInt();
+
+    int first = a[x-1];
+    int second = a[x-1];
+
+    a[x-1] = 1;
+
+    int third = a[x-1];
+
+    printInt(first);
+    printInt(second);
+    printInt(third);
+
+    return 0;
+}

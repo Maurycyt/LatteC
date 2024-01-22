@@ -111,7 +111,7 @@ case class BitcastStringConstant(dst: Register, stringConstant: String) extends 
 	override def replaceDst(newDst: Register): BitcastStringConstant = copy(dst = newDst)
 }
 
-case class Bitcast(dst: Register, arg: DefinedValue) extends MemoryIndependentAssignment {
+case class Bitcast(dst: Register, arg: DefinedValue, targetType: CompilerType) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): Bitcast = copy(dst = newDst)
 }
@@ -236,7 +236,7 @@ class Function(
 		blockJumpsFrom(blockIdx).toSeq.foreach { blockTo => removeJump(blockIdx, blockTo) }
 		blocks(blockIdx) = null
 		blockJumpsFrom(blockIdx) = mutable.ArrayBuffer.empty
-		blockJumpsTo.mapInPlace(_.filterInPlace(_ != blockIdx))
+		blockJumpsTo.foreach(_.filterInPlace(_ != blockIdx))
 	}
 
 	def addJump(blockFrom: Int, blockTo: Int): Unit = {
@@ -276,6 +276,10 @@ class Function(
 		blocks(blockTo) = null
 		blockJumpsTo(blockTo) = mutable.ArrayBuffer.empty
 		blockJumpsFrom(blockTo) = mutable.ArrayBuffer.empty
+		// Correct block jumps.
+		for (blockIdx <- blockJumpsFrom(blockFrom)) do {
+			blockJumpsTo(blockIdx).mapInPlace( j => if j == blockTo then blockFrom else j )
+		}
 		// Correct phi cases.
 		for (blockIdx <- blockJumpsFrom(blockFrom); iIdx <- blocks(blockIdx).instructions.indices) do {
 			blocks(blockIdx).instructions(iIdx) match {

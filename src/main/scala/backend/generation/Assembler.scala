@@ -112,7 +112,7 @@ class StatementAssembler()(
 				exprSource
 			else
 				val castResult = Register(targetType, s"%${function.nameGenerator.nextRegister}")
-				block += Bitcast(castResult, exprSource)
+				block += Bitcast(castResult, exprSource, castResult.valueType)
 				castResult
 		}
 
@@ -178,7 +178,7 @@ class StatementAssembler()(
 			if resultSource.valueType != function.returnType then
 				// If the types do not match exactly, we must be dealing with a subtype.
 				val resultAfterCast = Register(function.returnType, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(resultAfterCast, resultSource)
+				activeBlock += Bitcast(resultAfterCast, resultSource, resultAfterCast.valueType)
 				activeBlock += Return(resultAfterCast)
 			else
 				activeBlock += Return(resultSource)
@@ -299,7 +299,7 @@ object StatementAssembler {
 		sources.foreach { source =>
 			if source.valueType.isInstanceOf[TStr.type | TArray | TClass] then
 				val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
-				block += Bitcast(pointerRegister, source.asInstanceOf[DefinedValue])
+				block += Bitcast(pointerRegister, source.asInstanceOf[DefinedValue], pointerRegister.valueType)
 				block += CallVoid(Label(CTFunction(Seq(CTAnyPointer), TVoid), if decrease then "@decreaseRefCount" else "@increaseRefCount"), pointerRegister)
 		}
 	}
@@ -420,17 +420,17 @@ class ExpressionAssembler()(
 	private def registerEntity(pointerSource: Register, thisBlock: Block): Unit = pointerSource.valueType match {
 		case TStr =>
 			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
-			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += Bitcast(pointerRegister, pointerSource, pointerRegister.valueType)
 			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer), TVoid), "@registerString"), pointerRegister)
 		case TArray(underlying) =>
 			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 			val containsPointers = Constant(TBool, if underlying.isInstanceOf[TStr.type | TArray | TClass] then 1 else 0)
-			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += Bitcast(pointerRegister, pointerSource, pointerRegister.valueType)
 			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer, TBool), TVoid), "@registerArray"), pointerRegister, containsPointers)
 		case TClass(className) =>
 			val pointerRegister = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 			val classID = Constant(TInt, classTable(className).classID)
-			thisBlock += Bitcast(pointerRegister, pointerSource)
+			thisBlock += Bitcast(pointerRegister, pointerSource, pointerRegister.valueType)
 			thisBlock += CallVoid(Label(CTFunction(Seq(CTAnyPointer, TInt), TVoid), "@registerObject"), pointerRegister, classID)
 		case _ => throw GenerationError("Unexpected entity type registered for memory management.")
 	}
@@ -599,7 +599,7 @@ class ExpressionAssembler()(
 		val allocSource = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 		thisBlock += Call(allocSource, Label(CTFunction(Seq(TInt, TInt), CTAnyPointer), "@calloc"), Constant(TInt, 1), sizeInt)
 		val objectPtr = Register(TClass(className), s"%${function.nameGenerator.nextRegister}")
-		thisBlock += Bitcast(objectPtr, allocSource)
+		thisBlock += Bitcast(objectPtr, allocSource, objectPtr.valueType)
 		thisBlock += CallVoid(Label(TFunction(Seq(TClass(className)), TVoid), NamingConvention.constructor(className)), objectPtr)
 		registerEntity(objectPtr, thisBlock)
 		(objectPtr, thisBlock)
@@ -625,12 +625,12 @@ class ExpressionAssembler()(
 
 		// Initiate the array size, offset the array pointer and return it.
 		val arraySizePtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
-		activeBlock += Bitcast(arraySizePtr, allocSource)
+		activeBlock += Bitcast(arraySizePtr, allocSource, arraySizePtr.valueType)
 		activeBlock += PtrStore(arraySizePtr, arraySizeValue)
 		val ptrValueToReturn = Register(CTAnyPointer, s"%${function.nameGenerator.nextRegister}")
 		activeBlock += GetElementPtr(ptrValueToReturn, allocSource, Constant(TInt, 8))
 		val ptrRegisterToReturn = Register(TArray(underlyingType), s"%${function.nameGenerator.nextRegister}")
-		activeBlock += Bitcast(ptrRegisterToReturn, ptrValueToReturn)
+		activeBlock += Bitcast(ptrRegisterToReturn, ptrValueToReturn, ptrRegisterToReturn.valueType)
 		registerEntity(ptrRegisterToReturn, activeBlock)
 		(ptrRegisterToReturn, activeBlock)
 	}
@@ -657,7 +657,7 @@ class ExpressionAssembler()(
 			if argType != exprSource.valueType then
 				// We must be dealing with an object subtype.
 				val exprSourceAfterCast = Register(argType, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(exprSourceAfterCast, exprSource)
+				activeBlock += Bitcast(exprSourceAfterCast, exprSource, exprSourceAfterCast.valueType)
 				exprSourceAfterCast
 			else
 				exprSource
@@ -755,7 +755,7 @@ class ValueAssembler(
 				val functionTypeWithSelf = functionType.copy(args = functionType.args.prepended(TClass(className)))
 				// If it's a function, it cannot be written to, so return function pointer.
 				val objectSourcePtr = Register(CTPointerTo(CTPointerTo(CTFunctionPointer)), s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(objectSourcePtr, classSource)
+				activeBlock += Bitcast(objectSourcePtr, classSource, objectSourcePtr.valueType)
 				val vTablePtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
 				activeBlock += PtrLoad(vTablePtr, objectSourcePtr)
 				val functionPtrPtr = Register(CTPointerTo(CTFunctionPointer), s"%${function.nameGenerator.nextRegister}")
@@ -763,7 +763,7 @@ class ValueAssembler(
 				val functionPtr = Register(CTFunctionPointer, s"%${function.nameGenerator.nextRegister}")
 				activeBlock += PtrLoad(functionPtr, functionPtrPtr)
 				val functionPtrTyped = Register(functionTypeWithSelf, s"%${function.nameGenerator.nextRegister}")
-				activeBlock += Bitcast(functionPtrTyped, functionPtr)
+				activeBlock += Bitcast(functionPtrTyped, functionPtr, functionPtrTyped.valueType)
 				(functionPtrTyped, false, Some(classSource), activeBlock)
 			case TVoid =>
 				(Constant(TVoid, 0), false, Some(classSource), activeBlock)
@@ -817,7 +817,7 @@ object ValueAssembler {
 
 	def assembleArrayLength(arraySource: Register, block: Block)(using function: Function): Register = {
 		val arrayPtrAsIntPtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
-		block += Bitcast(arrayPtrAsIntPtr, arraySource)
+		block += Bitcast(arrayPtrAsIntPtr, arraySource, arrayPtrAsIntPtr.valueType)
 		val arrayLengthPtr = Register(CTPointerTo(TInt), s"%${function.nameGenerator.nextRegister}")
 		block += GetElementPtr(arrayLengthPtr, arrayPtrAsIntPtr, Constant(TInt, -1))
 		val arrayLengthSource = Register(TInt, s"%${function.nameGenerator.nextRegister}")

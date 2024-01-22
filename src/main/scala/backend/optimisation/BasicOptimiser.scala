@@ -1,7 +1,7 @@
 package backend.optimisation
 
 import backend.generation.ExpressionAssembler
-import backend.representation.{BinOp, Bitcast, ConditionalJump, Constant, Copy, Function, Inv, Jump, Neg, Phi, UnOp}
+import backend.representation.{BinOp, Bitcast, ConditionalJump, Constant, Copy, Eq, Function, Inv, Jump, Neg, Phi, UnOp}
 import frontend.checks.types.LatteType.TBool
 
 import scala.collection.mutable
@@ -50,6 +50,8 @@ object BasicOptimiser {
             }
             case BinOp(dst, Constant(lt, lv), op, Constant(rt, rv)) =>
               Copy(dst, ExpressionAssembler.operateOnTwoIntegers(lv, op, rv))
+            case BinOp(dst, r1, Eq, r2) if r1 == r2 =>
+              Copy(dst, Constant(TBool, 1))
             case cj @ ConditionalJump(Constant(TBool, v), ifTrue, ifFalse) =>
               if v == 1 then
                 function.removeJump(b.name, ifFalse)
@@ -140,7 +142,7 @@ object BasicOptimiser {
               nothingChangedThisLoop = false
               b.instructions(iIdx) = null
               substitute(Copy(p.dst, p.cases.map(_.value).filter(_ != p.dst).head))
-            case Bitcast(to, from) if to.valueType.toLLVM == from.valueType.toLLVM =>
+            case Bitcast(to, from, targetType) if from.valueType.toLLVM == targetType.toLLVM =>
               nothingChangedThisLoop = false
               b.instructions(iIdx) = null
               substitute(Copy(to, from))
