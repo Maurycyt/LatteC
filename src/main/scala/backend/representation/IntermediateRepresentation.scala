@@ -85,8 +85,15 @@ sealed trait Assignment extends Instruction {
 	def replaceDst(newDst: Register): Assignment
 }
 
+// An instruction which cannot influence memory.
+sealed trait MemoryUnmodifyingInstruction extends Instruction
+// An assignment which cannot influence memory, but may read from it.
+sealed trait MemoryUnmodifyingAssignment extends Assignment with MemoryUnmodifyingInstruction
+// An assignment which can neither influence memory, nor read from it.
+sealed trait MemoryIndependentAssignment extends MemoryUnmodifyingAssignment 
 
-case class Copy(dst: Register, value: DefinedValue) extends Assignment {
+
+case class Copy(dst: Register, value: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Copy = if reg == value then copy(value = newValue) else this
 	override def replaceDst(newDst: Register): Copy = copy(dst = newDst)
 }
@@ -95,26 +102,26 @@ case class PhiCase(blockName: String, value: DefinedValue) {
 	def substitute(reg: Register, newValue: DefinedValue): PhiCase = if reg == value then copy(value = newValue) else this
 }
 
-case class Phi(dst: Register, cases: PhiCase*) extends Assignment {
+case class Phi(dst: Register, cases: PhiCase*) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Phi = Phi(dst, cases.map(_.substitute(reg, newValue)): _*)
 	override def replaceDst(newDst: Register): Phi = Phi(newDst, cases: _*)
 }
 
-case class BitcastStringConstant(dst: Register, stringConstant: String) extends Assignment {
+case class BitcastStringConstant(dst: Register, stringConstant: String) extends MemoryIndependentAssignment {
 	override def replaceDst(newDst: Register): BitcastStringConstant = copy(dst = newDst)
 }
 
-case class Bitcast(dst: Register, arg: DefinedValue) extends Assignment {
+case class Bitcast(dst: Register, arg: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): Bitcast = copy(dst = newDst)
 }
 
-case class UnOp(dst: Register, op: UnaryOperator, arg: DefinedValue) extends Assignment {
+case class UnOp(dst: Register, op: UnaryOperator, arg: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): UnOp = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): UnOp = copy(dst = newDst)
 }
 
-case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: DefinedValue) extends Assignment {
+case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): BinOp = copy(
 		arg1 = if arg1 == reg then newValue else arg1,
 		arg2 = if arg2 == reg then newValue else arg2
@@ -122,7 +129,7 @@ case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: De
 	override def replaceDst(newDst: Register): BinOp = copy(dst = newDst)
 }
 
-case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, idxs: DefinedValue*) extends Assignment {
+case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, idxs: DefinedValue*) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): GetElementPtr =
 		GetElementPtr(
 			dst,
@@ -133,14 +140,14 @@ case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, id
 	override def replaceDst(newDst: Register): GetElementPtr = GetElementPtr(newDst, ptr, idx, idxs: _*)
 }
 
-case class PtrToInt(dst: Register, ptr: Register) extends Assignment {
+case class PtrToInt(dst: Register, ptr: Register) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrToInt = if ptr == reg then PtrToInt(dst, newValue.asInstanceOf[Register]) else this
 	override def replaceDst(newDst: Register): PtrToInt = PtrToInt(newDst, ptr)
 }
 
-case class Jump(blockName: String) extends Instruction
+case class Jump(blockName: String) extends MemoryUnmodifyingInstruction
 
-case class ConditionalJump(arg: DefinedValue, blockNameTrue: String, blockNameFalse: String) extends Instruction {
+case class ConditionalJump(arg: DefinedValue, blockNameTrue: String, blockNameFalse: String) extends MemoryUnmodifyingInstruction {
 	override def substitute(reg: Register, newValue: DefinedValue): ConditionalJump = if arg == reg then copy(arg = newValue) else this
 }
 
@@ -151,14 +158,14 @@ case class PtrStore(ptr: Register, arg: DefinedValue) extends Instruction {
 	)
 }
 
-case class PtrLoad(dst: Register, ptr: Register) extends Assignment {
+case class PtrLoad(dst: Register, ptr: Register) extends MemoryUnmodifyingAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrLoad = if ptr == reg then copy(ptr = newValue.asInstanceOf[Register]) else this
 	override def replaceDst(newDst: Register): PtrLoad = copy(dst = newDst)
 }
 
-case object ReturnVoid extends Instruction
+case object ReturnVoid extends MemoryUnmodifyingInstruction
 
-case class Return(arg: DefinedValue) extends Instruction {
+case class Return(arg: DefinedValue) extends MemoryUnmodifyingInstruction {
 	override def substitute(reg: Register, newValue: DefinedValue): Return = if arg == reg then Return(newValue) else this
 }
 
@@ -193,6 +200,8 @@ class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]
 	def += : Instruction => Unit = instructions.+=
 
 	override def toString: String = name
+	
+	def removeNulls(): Unit = instructions.filterInPlace(_ != null)
 }
 
 // Functions
@@ -208,6 +217,7 @@ class Function(
 ) {
 	val blocks: mutable.ArrayBuffer[Block] = mutable.ArrayBuffer.empty
 	def nonNullBlocks: Seq[Block] = blocks.filterNot(_ == null).toSeq
+	def nonNullBlockIndices: Seq[Int] = blocks.indices.filter(bIdx => blocks(bIdx) != null)
 	private val blockNameToIndex: mutable.HashMap[String, Int] = mutable.HashMap.empty
 
 	private val blockJumpsFrom: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
