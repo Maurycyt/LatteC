@@ -175,7 +175,13 @@ class StatementAssembler()(
 		if resultSource.valueType == TVoid then
 			activeBlock += ReturnVoid
 		else
-			activeBlock += Return(resultSource)
+			if resultSource.valueType != function.returnType then
+				// If the types do not match exactly, we must be dealing with a subtype.
+				val resultAfterCast = Register(function.returnType, s"%${function.nameGenerator.nextRegister}")
+				activeBlock += Bitcast(resultAfterCast, resultSource)
+				activeBlock += Return(resultAfterCast)
+			else
+				activeBlock += Return(resultSource)
 		(activeBlock, true)
 	}
 
@@ -194,7 +200,9 @@ class StatementAssembler()(
 		val blockAfter = function.addBlock()
 
 		ExpressionAssembler()(using blocksAfter = Some(blockIfTrue, blockAfter)).visit(ctx.expr)
+		symbolStack.addScope()
 		StatementAssembler()(using thisBlock = blockIfTrue, blockAfter = Some(blockAfter)).visit(ctx.stmt)
+		symbolStack.removeScope()
 
 		considerJumping(blockAfter, false)
 	}
@@ -205,8 +213,12 @@ class StatementAssembler()(
 		val blockAfter = function.addBlock()
 
 		ExpressionAssembler()(using blocksAfter = Some(blockIfTrue, blockIfFalse)).visit(ctx.expr)
+		symbolStack.addScope()
 		StatementAssembler()(using thisBlock = blockIfTrue, blockAfter = Some(blockAfter)).visit(ctx.stmt(0))
+		symbolStack.removeScope()
+		symbolStack.addScope()
 		StatementAssembler()(using thisBlock = blockIfFalse, blockAfter = Some(blockAfter)).visit(ctx.stmt(1))
+		symbolStack.removeScope()
 
 		considerJumping(blockAfter, false)
 	}
@@ -219,7 +231,9 @@ class StatementAssembler()(
 		thisBlock += Jump(condBlock.name)
 		function.addJump(thisBlock.name, condBlock.name)
 		ExpressionAssembler()(using thisBlock = condBlock, blocksAfter = Some(bodyBlock, blockAfter)).visit(ctx.expr)
+		symbolStack.addScope()
 		StatementAssembler()(using thisBlock = bodyBlock, blockAfter = Some(condBlock)).visit(ctx.stmt)
+		symbolStack.removeScope()
 
 		considerJumping(blockAfter, false)
 	}
@@ -228,7 +242,7 @@ class StatementAssembler()(
 		// Construct the preamble, which is taking the source of the array and its length.
 		val iteratorName: String = ctx.ID.getText
 		val iteratorType: LatteType = TypeCollector(using classTable.keys.toSet).visit(ctx.basicType)
-		val (arraySource, activeBlock, _) = ValueAssembler().visitForRead(ctx.expr).asInstanceOf[(Register, Block, Option[Register])]
+		val (arraySource, activeBlock) = ExpressionAssembler()(using blocksAfter = None).visit(ctx.expr).asInstanceOf[(Register, Block)]
 		val arrayLengthSource = ValueAssembler.assembleArrayLength(arraySource, activeBlock)
 
 		val blockCond = function.addBlock()
@@ -246,7 +260,9 @@ class StatementAssembler()(
 		// Construct the loop body block.
 		val iteratorValue = ValueAssembler.assembleArrayRead(arraySource, indexRegister, blockStmt)
 		symbolStack.addScope(mutable.HashMap(iteratorName -> SymbolSourceInfo(iteratorName, None, iteratorValue)))
+		symbolStack.addScope()
 		val (blockStmtLast, brokeFlow) = StatementAssembler()(using thisBlock = blockStmt, blockAfter = None).visit(ctx.stmt)
+		symbolStack.removeScope()
 		symbolStack.removeScope()
 		if !brokeFlow then {
 			blockStmtLast += Jump(blockCond.name)

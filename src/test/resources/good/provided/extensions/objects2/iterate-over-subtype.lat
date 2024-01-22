@@ -1,0 +1,23 @@
+class X {
+	int x;
+
+	void foo() {
+		x = 42;
+	}
+}
+
+class Y extends X {
+	void foo() {
+		x = 142;
+	}
+}
+
+int main() {
+	Y[] arry = new Y[1];
+	arry[0] = new Y;
+	for (X x : arry) {
+		x.foo();
+		if (x.x != 142) error();
+	}
+	return 0;
+}

@@ -18,9 +18,9 @@ import scala.jdk.CollectionConverters.*
 class ExpressionTypeChecker(using symbolStack: SymbolStack[SymbolInfo], classNames: Set[String], inheritanceTable: HierarchyTable, classTable: ClassTable, currentClass: Option[TClass] = None) extends LatteBaseVisitor[LatteType] {
 	import ClassTable.getClassOrThrow
 
-	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType]): LatteType = {
+	def matchExprTypeWithExpected(ctx: LatteParser.ExprContext | LatteParser.ValueContext, expectedTypes: Seq[LatteType], bidirectionalSubtyping: Boolean = false): LatteType = {
 		val exprType: LatteType = visit(ctx)
-		if expectedTypes.exists { expectedType => exprType.isSubtypeOf(expectedType) }
+		if expectedTypes.exists { expectedType => exprType.isSubtypeOf(expectedType) || (if bidirectionalSubtyping then expectedType.isSubtypeOf(exprType) else false) }
 		then exprType
 		else throw ExprTypeMismatchError(ctx, expectedTypes, exprType)
 	}
@@ -48,7 +48,7 @@ class ExpressionTypeChecker(using symbolStack: SymbolStack[SymbolInfo], classNam
 		ctx.relOp.getText match {
 			case "==" | "!=" =>
 				val exprLeftType: LatteType = visit(ctx.expr(0))
-				matchExprTypeWithExpected(ctx.expr(1), Seq(exprLeftType))
+				matchExprTypeWithExpected(ctx.expr(1), Seq(exprLeftType), bidirectionalSubtyping = true)
 			case _ =>
 				val exprLeftType: LatteType = matchExprTypeWithExpected(ctx.expr(0), Seq(TInt))
 				matchExprTypeWithExpected(ctx.expr(1), Seq(exprLeftType))
@@ -379,7 +379,9 @@ class StatementTypeChecker(
 		// Get the types of the expression, iterator variable and statement with extended scope
 		val iteratorType = TypeCollector().visit(ctx.basicType).asInstanceOf[TNonFun]
 		val iteratorName = ctx.ID.getText
-		ExpressionTypeChecker().matchExprTypeWithExpected(ctx.expr, Seq(TArray(iteratorType)))
+		val arrayType = ExpressionTypeChecker().visit(ctx.expr).asInstanceOf[TArray]
+		if !arrayType.underlying.isSubtypeOf(iteratorType) then
+			throw ExprTypeMismatchError(ctx.expr, Seq(TArray(iteratorType)), arrayType)
 		val stmtType = withNewScopeDo(SymTable(iteratorName -> SymbolInfo(Position.fromToken(ctx.ID.getSymbol), iteratorName, iteratorType))) {
 			withNewScopeDo() { visit(ctx.stmt) }
 		}

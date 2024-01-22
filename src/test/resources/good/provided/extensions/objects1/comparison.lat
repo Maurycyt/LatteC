@@ -1,0 +1,32 @@
+class A {
+    void print() {
+        printString("A");
+    }
+}
+
+class B extends A {
+    void print() {
+        printString("B");
+    }
+}
+
+int main(){
+    // Comparison with subtype.
+    B t1 = new B;
+    A t2 = t1;
+
+    if (t1 == t2) {
+        printString("YES");
+    }
+    if (t2 == t1) {
+        printString("YES");
+    }
+    if (t1 != t2) {
+        printString("NO");
+    }
+    if (t2 != t1) {
+        printString("NO");
+    }
+
+    return 0;
+}
