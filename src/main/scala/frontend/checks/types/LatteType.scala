@@ -52,7 +52,7 @@ object LatteType {
 	case class TClass(name: String) extends TNonFun {
 		override val toString: String = s"$name"
 		override def isSubtypeOf(other: LatteType)(using inheritanceTable: HierarchyTable): Boolean = other match {
-			case TClass(otherClass) => if name == otherClass then true else inheritanceTable(name).parent match {
+			case TClass(otherClassName) => if name == otherClassName then true else inheritanceTable(name).parent match {
 				case None => false
 				case Some(parentClass) => TClass(parentClass).isSubtypeOf(other)
 			}

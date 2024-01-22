@@ -1,0 +1,22 @@
+class B{
+    void print() {
+        printString("B");
+    }
+}
+
+class C extends B {
+    void print() {
+        printString("C");
+    }
+}
+
+B fun(){
+    // Return z podtypem.
+    return new C;
+}
+
+int main(){
+    B b = fun();
+    b.print();
+    return 0;
+}
