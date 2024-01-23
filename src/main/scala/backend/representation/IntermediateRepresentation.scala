@@ -57,11 +57,20 @@ sealed trait Source {
 	def toStringWithoutType: String
 	def toStringWithType: String = s"${valueType.toLLVM} $toStringWithoutType"
 	override def toString: String = toStringWithoutType
+	def rename(using renaming: Map[String, String]): Source
 }
 
-sealed trait Value extends Source
-sealed trait DefinedValue extends Value
-sealed trait Name extends Source { def name: String; override def toStringWithoutType: String = name }
+sealed trait Value extends Source {
+	override def rename(using renaming: Map[String, String]): Value
+}
+sealed trait DefinedValue extends Value {
+	override def rename(using renaming: Map[String, String]): DefinedValue
+}
+sealed trait Name extends Source {
+	def name: String
+	override def toStringWithoutType: String = name
+	override def rename(using renaming: Map[String, String]): Name
+}
 
 case class Constant(valueType: CompilerType, value: Long) extends DefinedValue {
 	override def toStringWithoutType: String = valueType match {
@@ -69,14 +78,20 @@ case class Constant(valueType: CompilerType, value: Long) extends DefinedValue {
 		case TVoid => "voidUnit"
 		case _ => if value == 0 then "null" else value.toString
 	}
+	override def rename(using renaming: Map[String, String]): Constant = this
 }
-case class Register(valueType: CompilerType, name: String) extends DefinedValue with Name
-case class Label(valueType: CompilerType, name: String) extends Name
+case class Register(valueType: CompilerType, name: String) extends DefinedValue with Name {
+	override def rename(using renaming: Map[String, String]): Register = copy(name = renaming.getOrElse(name, name))
+}
+case class Label(valueType: CompilerType, name: String) extends Name {
+	override def rename(using renaming: Map[String, String]): Label = copy(name = renaming.getOrElse(name, name))
+}
 
 // Instructions
 
 sealed trait Instruction {
 	def substitute(reg: Register, newValue: DefinedValue): Instruction = this
+	def rename(using renaming: Map[String, String]): Instruction
 }
 
 // An assignment is an instruction which sets the value of a register.
@@ -96,29 +111,38 @@ sealed trait MemoryIndependentAssignment extends MemoryUnmodifyingAssignment
 case class Copy(dst: Register, value: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Copy = if reg == value then copy(value = newValue) else this
 	override def replaceDst(newDst: Register): Copy = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): Copy =
+		Copy(dst.rename, value match { case r: Register => r.rename; case _ => value})
 }
 
 case class PhiCase(blockName: String, value: DefinedValue) {
 	def substitute(reg: Register, newValue: DefinedValue): PhiCase = if reg == value then copy(value = newValue) else this
+	def rename(using renaming: Map[String, String]): PhiCase =
+		PhiCase(renaming.getOrElse(blockName, blockName), value match { case r: Register => r.rename; case _ => value})
 }
 
 case class Phi(dst: Register, cases: PhiCase*) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Phi = Phi(dst, cases.map(_.substitute(reg, newValue)): _*)
 	override def replaceDst(newDst: Register): Phi = Phi(newDst, cases: _*)
+	override def rename(using renaming: Map[String, String]): Phi =
+		Phi(dst.rename, cases.map(_.rename): _*)
 }
 
 case class BitcastStringConstant(dst: Register, stringConstant: String) extends MemoryIndependentAssignment {
 	override def replaceDst(newDst: Register): BitcastStringConstant = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): BitcastStringConstant = copy(dst.rename)
 }
 
 case class Bitcast(dst: Register, arg: DefinedValue, targetType: CompilerType) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): Bitcast = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): Bitcast = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): Bitcast = copy(dst.rename, arg.rename)
 }
 
 case class UnOp(dst: Register, op: UnaryOperator, arg: DefinedValue) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): UnOp = if reg == arg then copy(arg = newValue) else this
 	override def replaceDst(newDst: Register): UnOp = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): UnOp = copy(dst.rename, arg = arg.rename)
 }
 
 case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: DefinedValue) extends MemoryIndependentAssignment {
@@ -127,6 +151,7 @@ case class BinOp(dst: Register, arg1: DefinedValue, op: BinaryOperator, arg2: De
 		arg2 = if arg2 == reg then newValue else arg2
 	)
 	override def replaceDst(newDst: Register): BinOp = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): BinOp = copy(dst.rename, arg1.rename, arg2 = arg2.rename)
 }
 
 case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, idxs: DefinedValue*) extends MemoryIndependentAssignment {
@@ -138,17 +163,24 @@ case class GetElementPtr(dst: Register, ptr: DefinedValue, idx: DefinedValue, id
 			idxs.map { idx => if idx == reg then newValue else idx }: _*
 		)
 	override def replaceDst(newDst: Register): GetElementPtr = GetElementPtr(newDst, ptr, idx, idxs: _*)
+	override def rename(using renaming: Map[String, String]): GetElementPtr =
+		GetElementPtr(dst.rename, ptr.rename, idx.rename, idxs.map(_.rename): _*)
 }
 
 case class PtrToInt(dst: Register, ptr: Register) extends MemoryIndependentAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrToInt = if ptr == reg then PtrToInt(dst, newValue.asInstanceOf[Register]) else this
 	override def replaceDst(newDst: Register): PtrToInt = PtrToInt(newDst, ptr)
+	override def rename(using renaming: Map[String, String]): PtrToInt = copy(dst.rename, ptr.rename)
 }
 
-case class Jump(blockName: String) extends MemoryUnmodifyingInstruction
+case class Jump(blockName: String) extends MemoryUnmodifyingInstruction {
+	override def rename(using renaming: Map[String, String]): Jump = copy(renaming.getOrElse(blockName, blockName))
+}
 
 case class ConditionalJump(arg: DefinedValue, blockNameTrue: String, blockNameFalse: String) extends MemoryUnmodifyingInstruction {
 	override def substitute(reg: Register, newValue: DefinedValue): ConditionalJump = if arg == reg then copy(arg = newValue) else this
+	override def rename(using renaming: Map[String, String]): ConditionalJump =
+		ConditionalJump(arg.rename, renaming.getOrElse(blockNameTrue, blockNameTrue), renaming.getOrElse(blockNameFalse, blockNameFalse))
 }
 
 case class PtrStore(ptr: Register, arg: DefinedValue) extends Instruction {
@@ -156,17 +188,22 @@ case class PtrStore(ptr: Register, arg: DefinedValue) extends Instruction {
 		if ptr == reg then newValue.asInstanceOf[Register] else ptr,
 		if arg == reg then newValue else arg
 	)
+	override def rename(using renaming: Map[String, String]): PtrStore = copy(ptr.rename, arg.rename)
 }
 
 case class PtrLoad(dst: Register, ptr: Register) extends MemoryUnmodifyingAssignment {
 	override def substitute(reg: Register, newValue: DefinedValue): PtrLoad = if ptr == reg then copy(ptr = newValue.asInstanceOf[Register]) else this
 	override def replaceDst(newDst: Register): PtrLoad = copy(dst = newDst)
+	override def rename(using renaming: Map[String, String]): PtrLoad = copy(dst.rename, ptr.rename)
 }
 
-case object ReturnVoid extends MemoryUnmodifyingInstruction
+case object ReturnVoid extends MemoryUnmodifyingInstruction {
+	override def rename(using renaming: Map[String, String]): ReturnVoid.type = this
+}
 
 case class Return(arg: DefinedValue) extends MemoryUnmodifyingInstruction {
 	override def substitute(reg: Register, newValue: DefinedValue): Return = if arg == reg then Return(newValue) else this
+	override def rename(using renaming: Map[String, String]): Return = copy(arg.rename)
 }
 
 case class CallVoid(name: Name, args: Value*) extends Instruction {
@@ -174,6 +211,8 @@ case class CallVoid(name: Name, args: Value*) extends Instruction {
 		name,
 		args.map { arg => if arg == reg then newValue else arg }: _*
 	)
+	override def rename(using renaming: Map[String, String]): CallVoid =
+		CallVoid(name.rename, args.map(_.rename): _*)
 }
 
 case class Call(dst: Register, name: Name, args: Value*) extends Assignment {
@@ -183,12 +222,15 @@ case class Call(dst: Register, name: Name, args: Value*) extends Assignment {
 		args.map { arg => if arg == reg then newValue else arg }: _*
 	)
 	override def replaceDst(newDst: Register): Call = Call(newDst, name, args: _*)
+	override def rename(using renaming: Map[String, String]): Call =
+		Call(dst.rename, name.rename, args.map(_.rename): _*)
 }
 
 // Don't use unless necessary.
 case class Literal(instruction: String) extends Instruction {
 	override def substitute(reg: Register, newValue: DefinedValue): Literal = Literal(instruction.replace(s" $reg ", s" $newValue "))
 	def replaceDst(newDst: Register): Literal = Literal(instruction.replaceFirst("%\\w+(\\.\\w+)* = ", s"$newDst = "))
+	override def rename(using renaming: Map[String, String]): Literal = this
 }
 
 // Blocks
@@ -202,6 +244,11 @@ class Block(val name: String, var instructions: mutable.ArrayBuffer[Instruction]
 	override def toString: String = name
 	
 	def removeNulls(): Unit = instructions.filterInPlace(_ != null)
+
+	def copy(using renaming: Map[String, String] = Map.empty): Block = Block(
+		renaming.getOrElse(name, name),
+		instructions.map(_.rename)
+	)
 }
 
 // Functions

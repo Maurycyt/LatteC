@@ -79,7 +79,7 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 
 		// Assemble constructors and transcribe them to LLVM IR.
 		val classConstructors = ClassRepresentationBuilder.buildClasses
-		classConstructors.foreach(Optimiser.optimiseFunction)
+		classConstructors.foreach { f => Optimiser.optimiseFunction(f, Map.empty) }
 		if classTable.nonEmpty then fw write "\n\n"
 		Transcriber().transcribeFunctions(classConstructors)
 		if classConstructors.nonEmpty then fw write "\n\n"
@@ -94,7 +94,8 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		)
 		val functions: Seq[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program).toSeq
 		functions.foreach { function => Normaliser()(using function).processFunction() }
-		functions.foreach(Optimiser.optimiseFunction)
+		val inlinableFunctions = (classConstructors ++ functions).map { function => function.nameInLLVM -> function }.toMap
+		functions.foreach { f => Optimiser.optimiseFunction(f, inlinableFunctions) }
 		Transcriber().transcribeFunctions(functions)
 
 		fw.close()

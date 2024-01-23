@@ -96,9 +96,9 @@ object ClassRepresentationBuilder {
 		// Add offsets for all pointer members.
 		memberTable.fields.foreach { info =>
 			if info.symbolType.isInstanceOf[TStr.type | TArray | TClass] then
-				val memberRelativePointer = Register(CTPointerTo(info.symbolType), s"%${function.nameGenerator.nextRegister}")
+				val memberRelativePointer = Register(CTPointerTo(info.symbolType), function.nameGenerator.nextRegister)
 				block += GetElementPtr(memberRelativePointer, Constant(TClass(className), 0), Constant(TInt, 0), Constant(TInt, info.offset))
-				val memberOffset = Register(TInt, s"%${function.nameGenerator.nextRegister}")
+				val memberOffset = Register(TInt, function.nameGenerator.nextRegister)
 				block += PtrToInt(memberOffset, memberRelativePointer)
 				block += CallVoid(Label(CTFunction(Seq(TInt, TInt), TVoid), "@registerObjectPointerMemberOffset"), Constant(TInt, classID), memberOffset)
 		}

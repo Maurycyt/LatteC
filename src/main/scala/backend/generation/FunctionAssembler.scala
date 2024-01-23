@@ -75,7 +75,7 @@ class FunctionAssembler()(
 						name,
 						None,
 						if anyType != TVoid then
-							Register(anyType, if name == NamingConvention.self then "%self" else s"%${nameGenerator.nextRegister}")
+							Register(anyType, if name == NamingConvention.self then "%self" else nameGenerator.nextRegister)
 						else
 							Constant(anyType, 0))
 				}

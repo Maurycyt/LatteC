@@ -14,6 +14,6 @@ class NameGenerator {
 	private val registerCounter: Counter = Counter()
 	private val labelCounter: Counter = Counter()
 
-	def nextRegister: String = s"r.${temporaryCounter.next}"
+	def nextRegister: String = s"%r.${temporaryCounter.next}"
 	def nextLabel: String = s"L.${labelCounter.next}"
 }
