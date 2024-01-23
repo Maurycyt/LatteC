@@ -206,7 +206,13 @@ case class Return(arg: DefinedValue) extends MemoryUnmodifyingInstruction {
 	override def rename(using renaming: Map[String, String]): Return = copy(arg.rename)
 }
 
-case class CallVoid(name: Name, args: Value*) extends Instruction {
+sealed trait SomeCall extends Instruction {
+	def name: Name
+	def args: Seq[Value]
+	override def rename(using renaming: Map[String, String]): SomeCall
+}
+
+case class CallVoid(name: Name, args: Value*) extends Instruction with SomeCall {
 	override def substitute(reg: Register, newValue: DefinedValue): CallVoid = CallVoid(
 		name,
 		args.map { arg => if arg == reg then newValue else arg }: _*
@@ -215,7 +221,7 @@ case class CallVoid(name: Name, args: Value*) extends Instruction {
 		CallVoid(name.rename, args.map(_.rename): _*)
 }
 
-case class Call(dst: Register, name: Name, args: Value*) extends Assignment {
+case class Call(dst: Register, name: Name, args: Value*) extends Assignment with SomeCall {
 	override def substitute(reg: Register, newValue: DefinedValue): Call = Call(
 		dst,
 		name,
@@ -269,6 +275,11 @@ class Function(
 
 	private val blockJumpsFrom: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
 	private val blockJumpsTo: mutable.ArrayBuffer[mutable.ArrayBuffer[Int]] = mutable.ArrayBuffer.empty
+
+	def addBlockIgnoreJumps(block: Block): Unit = {
+		blockNameToIndex.put(block.name, blocks.size)
+		blocks.append(block)
+	}
 
 	def addBlock(name: Option[String] = None): Block = {
 		val block = Block(s"${name.getOrElse(nameGenerator.nextLabel)}")
@@ -349,4 +360,77 @@ class Function(
 	def getBlockJumpsFrom(name: String): Seq[Int] = getBlockJumpsFrom(blockNameToIndex(name))
 	def getBlockJumpsTo(name: String): Seq[Int] = getBlockJumpsTo(blockNameToIndex(name))
 	def getBlockName(idx: Int): String = blocks(idx).name
+
+	def rewireBlocks(): Unit = {
+		// Build some structure.
+		val blockNames = nonNullBlocks.map(_.name)
+		val namedJumpsTo: Map[String, mutable.Set[String]] = blockNames.map { _ -> mutable.Set.empty }.toMap
+		for (block <- nonNullBlocks) {
+			block.instructions.last match {
+				case Jump(name) => namedJumpsTo(name).addOne(block.name)
+				case ConditionalJump(_, name1, name2) =>
+					namedJumpsTo(name1).addOne(block.name)
+					namedJumpsTo(name2).addOne(block.name)
+				case _ =>
+			}
+		}
+
+		// Run postorder.
+		val newIndices: mutable.Map[String, Int] = mutable.Map("entry" -> 0)
+		val visited: mutable.Set[String] = mutable.Set("entry")
+
+		def postOrderNumbering(name: String): Unit = {
+			visited.addOne(name)
+			namedJumpsTo(name).diff(visited).foreach(postOrderNumbering)
+			newIndices.getOrElseUpdate(name, newIndices.size)
+		}
+
+		blockNames.foreach(postOrderNumbering)
+
+		// Reset blocks member.
+		val newBlocks: mutable.ArrayBuffer[Block] = mutable.ArrayBuffer.fill(blockNames.size)(null)
+		blockNames.foreach { name => newBlocks(newIndices(name)) = getBlock(name) }
+		blocks.clearAndShrink(newBlocks.size)
+		blocks.addAll(newBlocks)
+
+		// Reset other members.
+		blockNameToIndex.clear
+		blockNameToIndex.addAll(newIndices)
+		blockJumpsFrom.clearAndShrink(newBlocks.size)
+		blockJumpsFrom.addAll(blockNames.map(_ => mutable.ArrayBuffer.empty))
+		blockJumpsTo.clearAndShrink(newBlocks.size)
+		blockJumpsTo.addAll(blockNames.map(_ => mutable.ArrayBuffer.empty))
+		namedJumpsTo.foreach{ (blockNameTo, blockNamesFrom) =>
+			blockNamesFrom.foreach{ blockNameFrom =>
+				blockJumpsFrom(blockNameToIndex(blockNameFrom)).append(blockNameToIndex(blockNameTo))
+				blockJumpsTo(blockNameToIndex(blockNameTo)).append(blockNameToIndex(blockNameFrom))
+			}
+		}
+	}
+
+	def getRenaming(nameGenerator: NameGenerator, preserveEntry: Boolean = false): Map[String, String] = {
+		arguments.map(argumentsInfo).map(_.source).collect {
+			case Register(_, name) => name -> nameGenerator.nextRegister
+		}.toMap ++
+		nonNullBlocks.flatMap { block =>
+			(block.name -> (if preserveEntry && block.name == "entry" then "entry" else nameGenerator.nextLabel)) +:
+				block.instructions.collect {
+					case a: Assignment => a.dst.name -> nameGenerator.nextRegister
+				}
+		}.toMap
+	}
+
+	def rename(using renaming: Map[String, String]): Unit = {
+		argumentsInfo.mapValuesInPlace { (argName, sInfo) => SymbolSourceInfo(sInfo.symbolName, sInfo.hostClass, sInfo.source.rename) }
+		blocks.mapInPlace(_.copy)
+		val newBlockNameToIndex = blockNameToIndex.map { (oldName, idx) => renaming(oldName) -> idx }.toMap
+		blockNameToIndex.clear()
+		blockNameToIndex.addAll(newBlockNameToIndex)
+	}
+
+	def rewireAndRename(): Unit = {
+		rewireBlocks()
+		nameGenerator.reset()
+		rename(using renaming = getRenaming(nameGenerator, true))
+	}
 }

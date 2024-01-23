@@ -8,7 +8,7 @@ object Optimiser {
     given Function = function
     given Map[String, Function] = inlinableFunctions
     while !stop do {
-      stop = !BasicOptimiser.optimiseFunction && !CommonSubexpressionOptimiser.optimiseFunction// && !FunctionInliner.inlineFunction
+      stop = !BasicOptimiser.optimiseFunction && !CommonSubexpressionOptimiser.optimiseFunction && !FunctionInliner.inlineFunction
     }
   }
 }

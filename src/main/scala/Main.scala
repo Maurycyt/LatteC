@@ -94,8 +94,9 @@ def main(inputFileString: String, debugFlag: Boolean): Unit = {
 		)
 		val functions: Seq[Function] = FunctionAssembler()(using hostClass = None).visitProgram(program).toSeq
 		functions.foreach { function => Normaliser()(using function).processFunction() }
-		val inlinableFunctions = (classConstructors ++ functions).map { function => function.nameInLLVM -> function }.toMap
+		val inlinableFunctions = functions.map { function => function.nameInLLVM -> function }.toMap
 		functions.foreach { f => Optimiser.optimiseFunction(f, inlinableFunctions) }
+		functions.foreach { _.rewireAndRename() }
 		Transcriber().transcribeFunctions(functions)
 
 		fw.close()

@@ -1,0 +1,15 @@
+boolean f(int x) {
+    if(x == 1)
+        return true;
+    else
+        return false;
+}
+
+int main () {
+    int x = 1;
+    if (f(x))
+        printString("YAY");
+    else
+        printString("NOO");
+    return 0;
+}

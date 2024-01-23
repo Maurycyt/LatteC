@@ -110,9 +110,9 @@ object BasicOptimiser {
   private def collapseBlockPaths(using function: Function): Boolean = {
     var somethingChanged = false
 
-    for (blockIdx <- function.blocks.indices.reverse) do {
+    for (blockIdx <- function.nonNullBlockIndices.reverse) do {
       val block = function.blocks(blockIdx)
-      if block != null then
+      if block != null then // We check not null because we remove blocks when collapsing jumps.
         val lastInstruction = block.instructions.last
         lastInstruction match {
           case Jump(nextBlock) if function.getBlockJumpsTo(nextBlock).length == 1 && nextBlock != block.name =>
