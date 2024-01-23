@@ -1,8 +1,8 @@
 package backend.optimisation
 
 import backend.generation.ExpressionAssembler
-import backend.representation.{BinOp, Bitcast, ConditionalJump, Constant, Copy, Eq, Function, Inv, Jump, Neg, Phi, UnOp}
-import frontend.checks.types.LatteType.TBool
+import backend.representation.{BinOp, Bitcast, ConditionalJump, Constant, Copy, Eq, Function, Inv, Jump, MemoryUnmodifyingAssignment, Neg, Phi, Register, UnOp}
+import frontend.checks.types.LatteType.{TBool, TInt}
 
 import scala.collection.mutable
 
@@ -12,10 +12,11 @@ object BasicOptimiser {
     var stop = false
     while !stop do {
       stop =
-        !reduceConstantExpressions &&
-          !collapseBlockPaths &&
-          !removeCopyEquivalents &&
-          !removeUnreachableBlocks
+        !reduceConstantExpressions
+          && !collapseBlockPaths
+          && !removeCopyEquivalents
+          && !removeUnreachableBlocks
+          && !removeUnusedRegisters
       if !stop then somethingChanged = true
     }
     somethingChanged
@@ -154,6 +155,31 @@ object BasicOptimiser {
         stop = true
       else
         somethingChanged = true
+    }
+
+    if somethingChanged then eliminateNullInstructions
+
+    somethingChanged
+  }
+
+  private def removeUnusedRegisters(using function: Function): Boolean = {
+    var somethingChanged = false
+
+    for (block <- function.nonNullBlocks; iIdx <- block.instructions.indices) do {
+      val instr = block.instructions(iIdx)
+      instr match {
+        case a: MemoryUnmodifyingAssignment =>
+          val dst = a.dst
+          var isDstUsed = false
+          for (block2 <- function.nonNullBlocks; instr2 <- block2.instructions) do {
+            if instr2 != null && instr2.substitute(dst, Register(TInt, "illegalName")) != instr2 then isDstUsed = true
+          }
+          if !isDstUsed then
+            block.instructions(iIdx) = null
+            somethingChanged = true
+
+        case _ =>
+      }
     }
 
     if somethingChanged then eliminateNullInstructions

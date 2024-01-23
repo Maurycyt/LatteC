@@ -1,0 +1,5 @@
+int main () {
+    int x = readInt(), y = readInt();
+    int z = x + y;
+    return 0;
+}

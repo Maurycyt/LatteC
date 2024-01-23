@@ -214,7 +214,10 @@ sealed trait SomeCall extends Instruction {
 
 case class CallVoid(name: Name, args: Value*) extends Instruction with SomeCall {
 	override def substitute(reg: Register, newValue: DefinedValue): CallVoid = CallVoid(
-		name,
+		newValue match {
+			case newName: Name if name == reg => newName
+			case _ => name
+		},
 		args.map { arg => if arg == reg then newValue else arg }: _*
 	)
 	override def rename(using renaming: Map[String, String]): CallVoid =
@@ -224,7 +227,10 @@ case class CallVoid(name: Name, args: Value*) extends Instruction with SomeCall 
 case class Call(dst: Register, name: Name, args: Value*) extends Assignment with SomeCall {
 	override def substitute(reg: Register, newValue: DefinedValue): Call = Call(
 		dst,
-		name,
+		newValue match {
+			case newName: Name if name == reg => newName
+			case _ => name
+		},
 		args.map { arg => if arg == reg then newValue else arg }: _*
 	)
 	override def replaceDst(newDst: Register): Call = Call(newDst, name, args: _*)
@@ -361,7 +367,7 @@ class Function(
 	def getBlockJumpsTo(name: String): Seq[Int] = getBlockJumpsTo(blockNameToIndex(name))
 	def getBlockName(idx: Int): String = blocks(idx).name
 
-	def rewireBlocks(): Unit = {
+	private def rewireBlocks(): Unit = {
 		// Build some structure.
 		val blockNames = nonNullBlocks.map(_.name)
 		val namedJumpsTo: Map[String, mutable.Set[String]] = blockNames.map { _ -> mutable.Set.empty }.toMap
