@@ -165,7 +165,7 @@ class StatementAssembler()(
 
 		// Before returning, we must decrease reference counts
 		// for all variables declared in the function.
-		decreaseReferenceCountsInFunction(thisBlock)
+		decreaseReferenceCountsInFunction(thisBlock /* Some(resultSource) */)
 		// Increase reference count for returned result to avoid clearing it.
 		// Then, clear unbound pointers, then decrease the reference count again.
 		increaseReferenceCounts(Seq(resultSource), function, activeBlock)

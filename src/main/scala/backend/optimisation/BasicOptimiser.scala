@@ -1,7 +1,7 @@
 package backend.optimisation
 
 import backend.generation.ExpressionAssembler
-import backend.representation.{BinOp, Bitcast, ConditionalJump, Constant, Copy, Eq, Function, Inv, Jump, MemoryUnmodifyingAssignment, Neg, Phi, Register, UnOp}
+import backend.representation.{BinOp, Bitcast, Block, CallVoid, ConditionalJump, Constant, Copy, Eq, Function, Inv, Jump, MemoryUnmodifyingAssignment, Neg, Phi, Register, UnOp}
 import frontend.checks.types.LatteType.{TBool, TInt}
 
 import scala.collection.mutable
@@ -11,12 +11,12 @@ object BasicOptimiser {
     var somethingChanged = false
     var stop = false
     while !stop do {
-      stop =
-        !reduceConstantExpressions
-          && !collapseBlockPaths
-          && !removeCopyEquivalents
-          && !removeUnreachableBlocks
-          && !removeUnusedRegisters
+      stop  = !reduceConstantExpressions
+      stop &= !collapseBlockPaths
+      stop &= !removeCopyEquivalents
+      stop &= !removeUnreachableBlocks
+      stop &= !removeUnusedRegisters
+      stop &= !removeUnnecessaryGarbageCollection
       if !stop then somethingChanged = true
     }
     somethingChanged
@@ -181,6 +181,47 @@ object BasicOptimiser {
         case _ =>
       }
     }
+
+    if somethingChanged then eliminateNullInstructions
+
+    somethingChanged
+  }
+
+  private def removeUnnecessaryGarbageCollection(using function: Function): Boolean = {
+    var somethingChanged = false
+    // Three-valued DFS.
+    val visited: Array[Int] = Array.fill(function.blocks.length)(0)
+
+    // Removes unnecessary garbage collection in a block
+    // and returns whether there may be uncleared decreased references.
+    def removeInBlock(bIdx: Int): Boolean = {
+      if visited(bIdx) == 1 then return true
+      visited(bIdx) = 1
+      var mayHaveUnclearedDecreasedReferences: Boolean = function.getBlockJumpsTo(bIdx).map(removeInBlock).fold(false)(_ || _)
+      visited(bIdx) = 2
+
+      val block: Block = function.blocks(bIdx)
+
+      for (iIdx <- block.instructions.indices) do {
+        val instr = block.instructions(iIdx)
+        if instr != null then instr match {
+          case c: CallVoid =>
+            if c.name.name == "@clearUnboundPointers" then
+              if mayHaveUnclearedDecreasedReferences then
+                mayHaveUnclearedDecreasedReferences = false
+              else
+                block.instructions(iIdx) = null
+                somethingChanged = true
+            else if Seq("@decreaseRefCount", "@registerString", "@registerArray", "@registerObject").contains(c.name.name) then
+              mayHaveUnclearedDecreasedReferences = true
+          case _ =>
+        }
+      }
+
+      mayHaveUnclearedDecreasedReferences
+    }
+
+    function.nonNullBlockIndices.foreach(removeInBlock)
 
     if somethingChanged then eliminateNullInstructions
 

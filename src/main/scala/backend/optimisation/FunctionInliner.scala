@@ -17,19 +17,24 @@ object FunctionInliner {
   }
 
   private def doInlineFunction(using function: Function, inlinableFunctions: Map[String, Function]): Boolean = {
-    val instructionCountBound: Int = 20
+    val inlinerInstructionBound: Int = 200
+    val inlinerSize: Int = function.nonNullBlocks.map(_.instructions.length).sum
+
+    val inlinedInstructionBound: Int = 20
     val callGraph: Map[String, Set[String]] = constructCallGraph
     val isRecursive: Map[String, Boolean] = Map.from(callGraph.keys.map { name => name -> reachable(callGraph, name, name)} )
     val instrCounts: Map[String, Int] = inlinableFunctions.map { (name, fun) => name -> fun.nonNullBlocks.map(_.instructions.length).sum }
     var somethingChanged = false
 
-    for (inlinableFunctionName <- inlinableFunctions.keys) do {
-      if !isRecursive(inlinableFunctionName) && instrCounts(inlinableFunctionName) < instructionCountBound then
+    for (inlinableFunctionName <- inlinableFunctions.keys if !somethingChanged) do {
+      if !isRecursive(inlinableFunctionName)
+        && instrCounts(inlinableFunctionName) < inlinedInstructionBound
+        && (inlinerSize < inlinerInstructionBound || instrCounts(inlinableFunctionName) == 1)
+      then
         val inlinableFunction = inlinableFunctions(inlinableFunctionName)
 
-        for (bIdx <- function.nonNullBlockIndices;
-             iIdx <- function.blocks(bIdx).instructions.indices
-             if !somethingChanged
+        for (bIdx <- function.nonNullBlockIndices if !somethingChanged;
+             iIdx <- function.blocks(bIdx).instructions.indices if !somethingChanged
         ) do {
           val instr = function.blocks(bIdx).instructions(iIdx)
           instr match {
@@ -97,7 +102,6 @@ object FunctionInliner {
             case _ =>
           }
         }
-
     }
 
     somethingChanged

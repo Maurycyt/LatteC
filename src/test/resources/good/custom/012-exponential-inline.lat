@@ -1,0 +1,33 @@
+int foo15() { return foo14() + foo14(); }
+int foo16() { return foo15() + foo15(); }
+int foo17() { return foo16() + foo16(); }
+int foo18() { return foo17() + foo17(); }
+int foo12() { return foo11() + foo11(); }
+int foo13() { return foo12() + foo12(); }
+int foo26() { return foo25() + foo25(); }
+int foo27() { return foo26() + foo26(); }
+int foo19() { return foo18() + foo18(); }
+int foo20() { return foo19() + foo19(); }
+int foo21() { return foo20() + foo20(); }
+int foo22() { return foo21() + foo21(); }
+int foo6() { return foo5() + foo5(); }
+int foo29() { return foo28() + foo28(); }
+int foo7() { return foo6() + foo6(); }
+int foo2() { return foo1() + foo1(); }
+int foo3() { return foo2() + foo2(); }
+int foo4() { return foo3() + foo3(); }
+int foo8() { return foo7() + foo7(); }
+int foo9() { return foo8() + foo8(); }
+int foo23() { return foo22() + foo22(); }
+int foo24() { return foo23() + foo23(); }
+int foo25() { return foo24() + foo24(); }
+int foo5() { return foo4() + foo4(); }
+int foo10() { return foo9() + foo9(); }
+int foo1() { return 1; }
+int foo11() { return foo10() + foo10(); }
+int foo14() { return foo13() + foo13(); }
+int foo28() { return foo27() + foo27(); }
+
+int main () {
+    return foo29();
+}
