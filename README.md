@@ -73,7 +73,8 @@ Moreover, the compiler must feature:
 - Various optimisations, like:
    - Constant expression simplification.
    - Function inlining.
-   - And more.
+   - Global common subespression elimination.
+   - Loop strength reduction.
 
 # Building and Running
 
